@@ -9,7 +9,8 @@ export default function AdminDashboard() {
   const [adminPassword, setAdminPassword] = useState('admin123');
   const [newPassword, setNewPassword] = useState('');
 
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'products' | 'settings'
+  // Active Tab: 'orders' | 'products' | 'finance' | 'settings'
+  const [activeTab, setActiveTab] = useState('orders'); 
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +67,7 @@ export default function AdminDashboard() {
     if (data) setProducts(data);
   };
 
-  // 1. WhatsApp Direct Link
+  // WhatsApp Direct Link
   const sendWhatsApp = (item) => {
     let phone = item.customer_phone.replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
@@ -127,6 +128,14 @@ export default function AdminDashboard() {
     return matchesSearch && matchesStatus && matchesStartDate && matchesEndDate;
   });
 
+  // KETENTUAN FINANSIAL / KEUMAN
+  const completedOrders = filteredOrders.filter((o) => o.status === 'lunas');
+  const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
+
+  const totalRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  const pendingRevenue = pendingOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  const avgOrderValue = completedOrders.length > 0 ? Math.round(totalRevenue / completedOrders.length) : 0;
+
   if (!isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
@@ -154,9 +163,9 @@ export default function AdminDashboard() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Dashboard Admin Parcel</h1>
-            <p className="text-xs text-slate-500">Kelola pesanan, stok produk, dan layanan pelanggan.</p>
+            <p className="text-xs text-slate-500">Kelola pesanan, stok produk, laporan keuangan, dan layanan pelanggan.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setActiveTab('orders')}
               className={`rounded-xl px-4 py-2 text-xs font-bold ${
@@ -164,6 +173,14 @@ export default function AdminDashboard() {
               }`}
             >
               📦 Pesanan
+            </button>
+            <button
+              onClick={() => setActiveTab('finance')}
+              className={`rounded-xl px-4 py-2 text-xs font-bold ${
+                activeTab === 'finance' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
+              }`}
+            >
+              💰 Keuangan
             </button>
             <button
               onClick={() => setActiveTab('products')}
@@ -323,7 +340,97 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 2: MANAJEMEN STOK PRODUK / PARCEL */}
+        {/* TAB 2: LAPORAN KEUANGAN */}
+        {activeTab === 'finance' && (
+          <div className="space-y-6">
+            {/* Filter Periode Ringkas */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border bg-white p-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Ringkasan Omset & Pendapatan</h2>
+                <p className="text-xs text-slate-500">Laporan di bawah dihitung berdasarkan filter tanggal saat ini.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="rounded-xl border p-2 text-xs"
+                />
+                <span className="text-xs font-bold text-slate-400">s/d</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="rounded-xl border p-2 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Metric Cards */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
+                <p className="text-xs font-bold uppercase text-slate-400">Total Pendapatan (Lunas)</p>
+                <p className="text-2xl font-black text-emerald-700">Rp {totalRevenue.toLocaleString('id-ID')}</p>
+                <p className="text-[10px] text-slate-400">{completedOrders.length} transaksi selesai</p>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
+                <p className="text-xs font-bold uppercase text-slate-400">Potensi Masuk (Pending)</p>
+                <p className="text-2xl font-black text-amber-600">Rp {pendingRevenue.toLocaleString('id-ID')}</p>
+                <p className="text-[10px] text-slate-400">{pendingOrders.length} pesanan belum bayar</p>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
+                <p className="text-xs font-bold uppercase text-slate-400">Rata-rata Order (AOV)</p>
+                <p className="text-2xl font-black text-slate-800">Rp {avgOrderValue.toLocaleString('id-ID')}</p>
+                <p className="text-[10px] text-slate-400">Per transaksi lunas</p>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
+                <p className="text-xs font-bold uppercase text-slate-400">Total Volume Pesanan</p>
+                <p className="text-2xl font-black text-indigo-700">{filteredOrders.length} Pesanan</p>
+                <p className="text-[10px] text-slate-400">Selesai + Pending</p>
+              </div>
+            </div>
+
+            {/* Detail Transaksi Terakhir yang Lunas */}
+            <div className="rounded-2xl border bg-white p-5 space-y-4">
+              <h3 className="font-bold text-slate-900 text-sm">Rincian Transaksi Masuk (Lunas)</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 uppercase text-slate-400 border-b">
+                    <tr>
+                      <th className="p-3">ID</th>
+                      <th className="p-3">Tanggal</th>
+                      <th className="p-3">Pelanggan</th>
+                      <th className="p-3">Rincian Items</th>
+                      <th className="p-3 text-right">Nominal Masuk</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {completedOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-slate-400">Belum ada transaksi lunas pada periode ini.</td>
+                      </tr>
+                    ) : (
+                      completedOrders.map((o) => (
+                        <tr key={o.id}>
+                          <td className="p-3 font-mono font-bold">#{o.id}</td>
+                          <td className="p-3 text-slate-500">{o.created_at ? o.created_at.split('T')[0] : '-'}</td>
+                          <td className="p-3 font-semibold">{o.customer_name}</td>
+                          <td className="p-3">{o.items}</td>
+                          <td className="p-3 text-right font-bold text-emerald-700">Rp {Number(o.total_price).toLocaleString('id-ID')}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: MANAJEMEN STOK PRODUK / PARCEL */}
         {activeTab === 'products' && (
           <div className="grid gap-6 md:grid-cols-3">
             {/* Form Tambah/Edit Produk */}
@@ -432,7 +539,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 3: PENGATURAN PASSWORD */}
+        {/* TAB 4: PENGATURAN PASSWORD */}
         {activeTab === 'settings' && (
           <div className="max-w-md rounded-2xl border bg-white p-6 space-y-4">
             <h2 className="text-lg font-bold text-slate-900">Ganti Password Admin</h2>
