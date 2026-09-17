@@ -523,38 +523,6 @@ const handleSaveProduct = async (e) => {
           </div>
         )}
 
-{/* Dropdown Kategori dan Badge */}
-<div className="grid grid-cols-2 gap-3">
-  <div>
-    <label className="block text-xs text-slate-400 mb-1">Kategori (Pojok Kiri Atas)</label>
-    <select
-      value={productForm.category}
-      onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white"
-    >
-      <option value="Makanan & Sembako">Makanan & Sembako</option>
-      <option value="Exclusive Hampers">Exclusive Hampers</option>
-      <option value="Kombinasi Premium">Kombinasi Premium</option>
-      <option value="Corporate Gift">Corporate Gift</option>
-    </select>
-  </div>
-
-  <div>
-    <label className="block text-xs text-slate-400 mb-1">Badge Highlight (Pojok Kanan Atas)</label>
-    <select
-      value={productForm.badge}
-      onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
-      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white"
-    >
-      <option value="">Tanpa Badge</option>
-      <option value="Paling Laris">🔥 Paling Laris</option>
-      <option value="Mewah">✨ Mewah</option>
-      <option value="Rekomendasi">👍 Rekomendasi</option>
-      <option value="Hemat">🏷️ Hemat</option>
-    </select>
-  </div>
-</div>
-
         {/* TAB 2: MANAJEMEN PESANAN (DENGAN FITUR HAPUS) */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
@@ -787,24 +755,48 @@ const handleSaveProduct = async (e) => {
                   onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
                   className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                 />
-                <div className="flex gap-2">
-                  <button type="submit" className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white hover:bg-emerald-500">
-                    Simpan Produk
-                  </button>
-                  {editingProduct && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingProduct(null);
-                        setProductForm({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
-                      }}
-                      className="rounded-xl border border-slate-700 bg-slate-800 px-3 text-xs font-bold text-slate-300"
-                    >
-                      Batal
-                    </button>
-                  )}
-                </div>
-              </form>
+               {/* ======================================================== */}
+      {/* 👇 TEMPATKAN KODE DROPDOWN BADGE & KATEGORI DI SINI 👇 */}
+      {/* ======================================================== */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] text-slate-400 mb-1">Kategori</label>
+          <select
+            value={productForm.category || 'Exclusive Hampers'}
+            onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+            className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+          >
+            <option value="Makanan & Sembako">Makanan & Sembako</option>
+            <option value="Exclusive Hampers">Exclusive Hampers</option>
+            <option value="Kombinasi Premium">Kombinasi Premium</option>
+            <option value="Corporate Gift">Corporate Gift</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-[10px] text-slate-400 mb-1">Badge Highlight</label>
+          <select
+            value={productForm.badge || ''}
+            onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
+            className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+          >
+            <option value="">Tanpa Badge</option>
+            <option value="Paling Laris">🔥 Paling Laris</option>
+            <option value="Mewah">✨ Mewah</option>
+            <option value="Rekomendasi">👍 Rekomendasi</option>
+            <option value="Hemat">🏷️ Hemat</option>
+          </select>
+        </div>
+      </div>
+      {/* ======================================================== */}
+
+
+      {/* 7. Tombol Simpan Produk */}
+      <button type="submit" className="...">
+        Simpan Produk
+      </button>
+
+    </form>
             </div>
 
             <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
