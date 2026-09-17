@@ -8,7 +8,7 @@ export default function AdminDashboard() {
   const [passwordInput, setPasswordInput] = useState('');
   const [adminPassword, setAdminPassword] = useState('admin123');
 
-  // State Navigasi Tab ('orders' atau 'inventory')
+  // State Navigasi Tab ('orders', 'inventory', atau 'finance')
   const [activeTab, setActiveTab] = useState('orders');
 
   // State Data Pesanan & Produk
@@ -30,6 +30,15 @@ export default function AdminDashboard() {
   // State Modal Password Admin
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+
+  // State Fitur Keuangan (Expenses / Pengeluaran Operational)
+  const [expenses, setExpenses] = useState([
+    { id: 1, title: 'Pembelian Stok Bahan & Pita', amount: 450000, category: 'Modal/HPP', date: '2026-03-01' },
+    { id: 2, title: 'Bensin & Operasional Kurir', amount: 120000, category: 'Operasional', date: '2026-03-02' }
+  ]);
+  const [expenseTitle, setExpenseTitle] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState('Operasional');
 
   useEffect(() => {
     const savedPass = localStorage.getItem('admin_password');
@@ -111,6 +120,29 @@ export default function AdminDashboard() {
     fetchOrders();
   };
 
+  const handleAddExpense = (e) => {
+    e.preventDefault();
+    if (!expenseTitle || !expenseAmount) return;
+
+    const newExp = {
+      id: Date.now(),
+      title: expenseTitle,
+      amount: Number(expenseAmount),
+      category: expenseCategory,
+      date: new Date().toISOString().split('T')[0],
+    };
+
+    setExpenses([newExp, ...expenses]);
+    setExpenseTitle('');
+    setExpenseAmount('');
+    alert('Pengeluaran berhasil dicatat!');
+  };
+
+  const handleDeleteExpense = (id) => {
+    if (!window.confirm('Hapus catatan pengeluaran ini?')) return;
+    setExpenses(expenses.filter((item) => item.id !== id));
+  };
+
   const filteredOrders = orders.filter((o) => {
     const matchesSearch =
       o.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -136,6 +168,19 @@ export default function AdminDashboard() {
     setNewPassword('');
     setShowPasswordModal(false);
   };
+
+  // KETENTUAN DAN KALKULASI KEUANGAN
+  const totalGrossRevenue = orders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  const totalPaidRevenue = orders
+    .filter((item) => item.status === 'lunas')
+    .reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  const totalPendingRevenue = orders
+    .filter((item) => item.status === 'pending')
+    .reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+
+  const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const netProfit = totalPaidRevenue - totalExpenses;
+  const averageOrderValue = orders.length > 0 ? totalGrossRevenue / orders.length : 0;
 
   if (!isAuthenticated) {
     return (
@@ -173,7 +218,7 @@ export default function AdminDashboard() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Dashboard Admin Parcel</h1>
-            <p className="mt-1 text-sm text-slate-500">Kelola pesanan masuk, cetak invoice, catatan, dan stok parcel.</p>
+            <p className="mt-1 text-sm text-slate-500">Kelola pesanan, invoice, stok, dan laporan keuangan usaha.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -192,7 +237,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Tab Navigasi Admin */}
-        <div className="mb-6 flex gap-2 border-b border-slate-200 pb-3">
+        <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
           <button
             onClick={() => setActiveTab('orders')}
             className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold transition ${
@@ -216,6 +261,17 @@ export default function AdminDashboard() {
             }`}
           >
             📦 Kelola Stok Produk ({products.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('finance')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold transition ${
+              activeTab === 'finance'
+                ? 'bg-emerald-700 text-white shadow'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            💰 Keuangan & Arus Kas
           </button>
         </div>
 
@@ -404,6 +460,153 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* TAB 3: KEUANGAN & ANALITIK PROFESIONAL */}
+        {activeTab === 'finance' && (
+          <div className="space-y-6">
+            {/* Header Laporan */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Laporan & Analisis Keuangan</h2>
+                <p className="text-xs text-slate-500">Ringkasan transaksi pendapatan, biaya operasional, dan kalkulasi estimasi laba.</p>
+              </div>
+              <button
+                onClick={() => window.print()}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800"
+              >
+                🖨️ Cetak Laporan Keuangan
+              </button>
+            </div>
+
+            {/* Matrix Kartu KPI Keuangan */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase text-slate-400">Total Omset Masuk</p>
+                <h3 className="text-2xl font-black text-slate-900 mt-2">
+                  Rp {totalGrossRevenue.toLocaleString('id-ID')}
+                </h3>
+                <p className="text-[10px] text-slate-500 mt-1">Gabungan pesanan Lunas & Pending</p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase text-emerald-700">Kas Diterima (Lunas)</p>
+                <h3 className="text-2xl font-black text-emerald-800 mt-2">
+                  Rp {totalPaidRevenue.toLocaleString('id-ID')}
+                </h3>
+                <p className="text-[10px] text-emerald-600 mt-1">Pendapatan bersih yang terverifikasi</p>
+              </div>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase text-amber-700">Potensi Piutang (Pending)</p>
+                <h3 className="text-2xl font-black text-amber-800 mt-2">
+                  Rp {totalPendingRevenue.toLocaleString('id-ID')}
+                </h3>
+                <p className="text-[10px] text-amber-600 mt-1">Pesanan belum menyelesaikan pembayaran</p>
+              </div>
+
+              <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase text-blue-700">Laba Bersih Estimasi</p>
+                <h3 className="text-2xl font-black text-blue-800 mt-2">
+                  Rp {netProfit.toLocaleString('id-ID')}
+                </h3>
+                <p className="text-[10px] text-blue-600 mt-1">Dihitung dari (Kas Lunas - Operational)</p>
+              </div>
+            </div>
+
+            {/* Statistik Tambahan */}
+            <div className="grid gap-6 lg:grid-cols-3">
+              {/* Box Rata-Rata & Performa */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                <h3 className="font-bold text-slate-900 text-sm border-b pb-3">Statistik Penjualan</h3>
+                <div>
+                  <p className="text-xs text-slate-400">Total Volume Pesanan</p>
+                  <p className="text-lg font-bold text-slate-800">{orders.length} Transaksi</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Rata-Rata Nilai Transaksi (AOV)</p>
+                  <p className="text-lg font-bold text-emerald-700">
+                    Rp {Math.round(averageOrderValue).toLocaleString('id-ID')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Total Beban Operasional</p>
+                  <p className="text-lg font-bold text-rose-600">
+                    Rp {totalExpenses.toLocaleString('id-ID')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Form Input Pengeluaran Ops */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="font-bold text-slate-900 text-sm mb-1">Catat Beban / Pengeluaran Toko</h3>
+                <p className="text-xs text-slate-500 mb-4">Tambahkan biaya operasional seperti bahan baku, kurir, atau iklan untuk menghitung laba bersih tepat.</p>
+
+                <form onSubmit={handleAddExpense} className="grid gap-3 sm:grid-cols-4">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nama pengeluaran..."
+                    value={expenseTitle}
+                    onChange={(e) => setExpenseTitle(e.target.value)}
+                    className="rounded-xl border border-slate-300 p-2.5 text-xs focus:border-emerald-600 focus:outline-none sm:col-span-2"
+                  />
+                  <input
+                    type="number"
+                    required
+                    placeholder="Nominal (Rp)..."
+                    value={expenseAmount}
+                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    className="rounded-xl border border-slate-300 p-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                  <select
+                    value={expenseCategory}
+                    onChange={(e) => setExpenseCategory(e.target.value)}
+                    className="rounded-xl border border-slate-300 p-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  >
+                    <option value="Modal/HPP">Modal / HPP</option>
+                    <option value="Operasional">Operasional</option>
+                    <option value="Pemasaran">Pemasaran</option>
+                  </select>
+                  <button
+                    type="submit"
+                    className="sm:col-span-4 rounded-xl bg-slate-900 py-2.5 text-xs font-bold text-white hover:bg-slate-800"
+                  >
+                    + Tambahkan Catatan Biaya
+                  </button>
+                </form>
+
+                {/* List Pengeluaran */}
+                <div className="mt-6 border-t pt-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Daftar Pengeluaran Terdaftar</h4>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {expenses.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">Belum ada catatan pengeluaran.</p>
+                    ) : (
+                      expenses.map((exp) => (
+                        <div key={exp.id} className="flex items-center justify-between text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                          <div>
+                            <span className="font-bold text-slate-800">{exp.title}</span>
+                            <span className="ml-2 px-2 py-0.5 rounded bg-slate-200 text-[10px] text-slate-600">{exp.category}</span>
+                            <span className="ml-2 text-[10px] text-slate-400">{exp.date}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-rose-600">- Rp {exp.amount.toLocaleString('id-ID')}</span>
+                            <button
+                              onClick={() => handleDeleteExpense(exp.id)}
+                              className="text-slate-400 hover:text-rose-600 font-bold"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL 1: EDIT CATATAN PESANAN */}
         {editingOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
@@ -461,7 +664,6 @@ export default function AdminDashboard() {
 
               {/* Tampilan Invoice Siap Print */}
               <div className="rounded-2xl border border-slate-300 p-6 bg-white space-y-6">
-                {/* Header Invoice */}
                 <div className="flex justify-between items-start border-b pb-4">
                   <div>
                     <h1 className="text-2xl font-black text-emerald-800 tracking-wide">PARCEL STORE</h1>
@@ -476,7 +678,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Detail Pelanggan */}
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase">Ditujukan Kepada:</p>
@@ -497,7 +698,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Tabel Rincian Produk */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
@@ -517,7 +717,6 @@ export default function AdminDashboard() {
                   </table>
                 </div>
 
-                {/* Catatan / Pesan Ucapan */}
                 {invoiceOrder.notes && (
                   <div className="rounded-xl bg-slate-50 p-3 text-xs border border-slate-200">
                     <p className="text-[10px] font-bold text-slate-400 uppercase">Catatan / Ucapan:</p>
@@ -525,7 +724,6 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
-                {/* Total Bayar */}
                 <div className="flex justify-between items-center border-t pt-4">
                   <p className="text-xs text-slate-500 italic">Terima kasih telah berbelanja di Parcel Store.</p>
                   <div className="text-right">
