@@ -9,22 +9,27 @@ export default function AdminDashboard() {
   const [adminPassword, setAdminPassword] = useState('admin123');
   const [newPassword, setNewPassword] = useState('');
 
-  // Tab Aktif: 'orders' | 'finance' | 'products' | 'settings'
-  const [activeTab, setActiveTab] = useState('orders');
+  // Active Tab: 'orders' | 'finance' | 'products' | 'settings'
+  const [activeTab, setActiveTab] = useState('finance');
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter & Pencarian
+  // Filter & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Biaya Operasional / Pengeluaran Lain (Catatan Keuangan)
-  const [operationalCost, setOperationalCost] = useState(0);
+  // Rincian Beban Operasional (OPEX) Untuk Keuangan Profesional
+  const [opex, setOpex] = useState({
+    packaging: 0,
+    marketing: 0,
+    operational: 0,
+    shipping: 0
+  });
 
-  // Modal / Form State
+  // State Modals / Form
   const [editingOrder, setEditingOrder] = useState(null);
   const [noteInput, setNoteInput] = useState('');
   const [invoiceOrder, setInvoiceOrder] = useState(null);
@@ -37,8 +42,14 @@ export default function AdminDashboard() {
     const savedPass = localStorage.getItem('admin_password');
     if (savedPass) setAdminPassword(savedPass);
 
-    const savedOpCost = localStorage.getItem('operational_cost');
-    if (savedOpCost) setOperationalCost(Number(savedOpCost));
+    const savedOpex = localStorage.getItem('financial_opex');
+    if (savedOpex) {
+      try {
+        setOpex(JSON.parse(savedOpex));
+      } catch (e) {
+        console.error(e);
+      }
+    }
   }, []);
 
   const handleLogin = (e) => {
@@ -63,8 +74,8 @@ export default function AdminDashboard() {
 
   const fetchOrders = async () => {
     setLoading(true);
-    const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-    if (data) setOrders(data);
+    const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (!error && data) setOrders(data);
     setLoading(false);
   };
 
@@ -78,24 +89,32 @@ export default function AdminDashboard() {
     let phone = item.customer_phone.replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
 
-    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di Parcel Store!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${item.status.toUpperCase()}*\n\nAda yang bisa kami bantu kembali? 😊`;
+    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di Parcel Store!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${item.status.toUpperCase()}*\n\nAda yang bisa kami bantu? 😊`;
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  // Update Status Pesanan
+  // Update Status Pesanan ke Supabase
   const handleStatusChange = async (id, newStatus) => {
-    await supabase.from('orders').update({ status: newStatus }).eq('id', id);
-    fetchOrders();
+    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', id);
+    if (!error) {
+      setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
+    } else {
+      alert('Gagal memperbarui status: ' + error.message);
+    }
   };
 
-  // Update Cara Bayar (Transfer / QRIS / Tunai)
+  // FIX: PERBAIKAN CARA BAYAR (UPDATES SUPABASE & STATE INTERAKTIF)
   const handlePaymentMethodChange = async (id, newMethod) => {
-    await supabase.from('orders').update({ payment_method: newMethod }).eq('id', id);
-    fetchOrders();
+    const { error } = await supabase.from('orders').update({ payment_method: newMethod }).eq('id', id);
+    if (!error) {
+      setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, payment_method: newMethod } : o)));
+    } else {
+      alert('Gagal memperbarui cara bayar: ' + error.message);
+    }
   };
 
-  // Update Catatan Khusus
+  // Update Catatan
   const handleSaveNote = async () => {
     if (!editingOrder) return;
     await supabase.from('orders').update({ notes: noteInput }).eq('id', editingOrder.id);
@@ -103,11 +122,11 @@ export default function AdminDashboard() {
     fetchOrders();
   };
 
-  // Update Biaya Operasional Catatan Keuangan
-  const handleSaveOperationalCost = (val) => {
-    const cost = Number(val) || 0;
-    setOperationalCost(cost);
-    localStorage.setItem('operational_cost', cost.toString());
+  // Update OPEX Keuangan
+  const handleOpexChange = (key, val) => {
+    const newOpex = { ...opex, [key]: Number(val) || 0 };
+    setOpex(newOpex);
+    localStorage.setItem('financial_opex', JSON.stringify(newOpex));
   };
 
   // CRUD Produk
@@ -147,40 +166,42 @@ export default function AdminDashboard() {
     return matchesSearch && matchesStatus && matchesStartDate && matchesEndDate;
   });
 
-  // ==========================================
-  // KALKULASI KEUANGAN & LABA RUGI (PROFIT & LOSS)
-  // ==========================================
+  // ===================================================
+  // AKUNTANSI & KEUANGAN PROFESIONAL (PROFIT & LOSS)
+  // ===================================================
   const completedOrders = filteredOrders.filter((o) => o.status === 'lunas');
   const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
 
-  const totalRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  // Gross Revenue (Omset Kotor Lunas)
+  const grossRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
   const pendingRevenue = pendingOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
 
-  // HPP (Harga Pokok Penjualan) / Modal Bahan Baku
-  // Asumsi default HPP 60% dari total harga jika modal produk tidak diisi
-  const totalHPP = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.60), 0);
+  // HPP / Cost of Goods Sold (COGS)
+  // Menghitung HPP dari cost_price produk atau estimasi default 60% jika belum diset
+  const totalCOGS = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.6), 0);
 
-  // Laba Kotor (Gross Profit) = Revenue - HPP
-  const grossProfit = totalRevenue - totalHPP;
+  // Gross Profit (Laba Kotor)
+  const grossProfit = grossRevenue - totalCOGS;
 
-  // Laba Bersih (Net Profit) = Laba Kotor - Beban Operasional
-  const netProfit = grossProfit - operationalCost;
+  // Total OPEX (Beban Operasional)
+  const totalOPEX = Object.values(opex).reduce((a, b) => a + b, 0);
 
-  // Percentage Margin Profit
-  const netMarginPercent = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+  // Net Operating Profit (Laba Bersih Operasional)
+  const netProfit = grossProfit - totalOPEX;
+  const netProfitMargin = grossRevenue > 0 ? ((netProfit / grossRevenue) * 100).toFixed(1) : 0;
 
-  // Breakdown Metode Pembayaran (Transfer / QRIS / Tunai)
-  const paymentBreakdown = completedOrders.reduce((acc, order) => {
+  // Analysis Breakdown Cara Bayar
+  const paymentMethodSummary = completedOrders.reduce((acc, order) => {
     const method = order.payment_method || 'Transfer Bank';
     acc[method] = (acc[method] || 0) + Number(order.total_price || 0);
     return acc;
   }, {});
 
-  // Export Data Ke CSV
+  // Export Laporan CSV
   const handleExportCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data untuk diekspor!');
 
-    let csvContent = 'data:text/csv;charset=utf-8,ID,Tanggal,Nama Pelanggan,No WA,Items,Total Harga,Cara Bayar,Status\n';
+    let csvContent = 'data:text/csv;charset=utf-8,ID Transaksi,Tanggal,Nama Pelanggan,No WA,Detail Items,Total Harga,Cara Bayar,Status\n';
     filteredOrders.forEach((o) => {
       const row = [
         o.id,
@@ -198,7 +219,7 @@ export default function AdminDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Laporan_Keuangan_Parcel_${startDate || 'Awal'}_sd_${endDate || 'Akhir'}.csv`);
+    link.setAttribute('download', `Laporan_Keuangan_${startDate || 'Awal'}_sd_${endDate || 'Akhir'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -206,18 +227,21 @@ export default function AdminDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <form onSubmit={handleLogin} className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-xl space-y-4">
-          <h1 className="text-xl font-bold text-slate-900 text-center">Login Admin</h1>
+      <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
+        <form onSubmit={handleLogin} className="w-full max-w-sm rounded-3xl bg-slate-800 p-8 shadow-2xl border border-slate-700 space-y-5">
+          <div className="text-center">
+            <h1 className="text-2xl font-black text-white">Admin Finance</h1>
+            <p className="text-xs text-slate-400 mt-1">Masukan password untuk mengelola keuangan</p>
+          </div>
           <input
             type="password"
             placeholder="Password admin..."
             value={passwordInput}
             onChange={(e) => setPasswordInput(e.target.value)}
-            className="w-full rounded-xl border p-2.5 text-sm"
+            className="w-full rounded-2xl bg-slate-900 border border-slate-700 p-3 text-sm text-white focus:outline-none focus:border-emerald-500"
           />
-          <button type="submit" className="w-full rounded-xl bg-emerald-700 py-2.5 font-bold text-white">
-            Masuk
+          <button type="submit" className="w-full rounded-2xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-500 transition-all">
+            Masuk Portal Admin
           </button>
         </form>
       </div>
@@ -225,58 +249,239 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 text-slate-800">
-      <div className="mx-auto max-w-7xl">
-        {/* Header Dashboard */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8 font-sans">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header Professional */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-6">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Dashboard Admin Parcel</h1>
-            <p className="text-xs text-slate-500">Kelola pesanan, pencatatan keuangan, dan stok produk.</p>
+            <span className="text-[10px] font-bold tracking-widest text-emerald-400 uppercase">Sistem Akuntansi & Manajemen</span>
+            <h1 className="text-2xl sm:text-3xl font-black text-white">Dashboard Keuangan & Operasional</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setActiveTab('orders')}
-              className={`rounded-xl px-4 py-2 text-xs font-bold ${
-                activeTab === 'orders' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
+              onClick={() => setActiveTab('finance')}
+              className={`rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                activeTab === 'finance' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
               }`}
             >
-              📦 Pesanan & Cara Bayar
+              📊 Keuangan & Laba Rugi
             </button>
             <button
-              onClick={() => setActiveTab('finance')}
-              className={`rounded-xl px-4 py-2 text-xs font-bold ${
-                activeTab === 'finance' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
+              onClick={() => setActiveTab('orders')}
+              className={`rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                activeTab === 'orders' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
               }`}
             >
-              📈 Catatan Keuangan & HPP
+              📦 Transaksi & Cara Bayar
             </button>
             <button
               onClick={() => setActiveTab('products')}
-              className={`rounded-xl px-4 py-2 text-xs font-bold ${
-                activeTab === 'products' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
+              className={`rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                activeTab === 'products' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
               }`}
             >
-              🎁 Stok & Modal Produk
+              🎁 Modal & Stok Produk
             </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`rounded-xl px-4 py-2 text-xs font-bold ${
-                activeTab === 'settings' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
-              }`}
-            >
-              ⚙️ Pengaturan
-            </button>
-            <button onClick={() => setIsAuthenticated(false)} className="rounded-xl border bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100">
+            <button onClick={() => setIsAuthenticated(false)} className="rounded-xl border border-rose-900/50 bg-rose-950/30 px-3 py-2.5 text-xs font-bold text-rose-400 hover:bg-rose-900/50">
               🚪 Keluar
             </button>
           </div>
         </div>
 
-        {/* TAB 1: TABEL MANAJEMEN PESANAN */}
+        {/* TAB 1: KEUANGAN PROFESIONAL (PROFIT & LOSS STATEMENT) */}
+        {activeTab === 'finance' && (
+          <div className="space-y-6">
+            {/* Control Bar Periode Tanggal */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl bg-slate-900 border border-slate-800 p-4">
+              <div>
+                <h2 className="text-sm font-bold text-white">Laporan Laba Rugi Usaha (Profit & Loss)</h2>
+                <p className="text-xs text-slate-400">Ringkasan akuntansi real-time pendapatan kotor, HPP, operasional, dan laba bersih.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white"
+                />
+                <span className="text-xs font-bold text-slate-500">s/d</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white"
+                />
+                <button
+                  onClick={handleExportCSV}
+                  className="rounded-xl bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
+                >
+                  📥 Export Laporan CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Top Stat Cards */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Revenue (Omset Lunas)</span>
+                <p className="text-2xl font-black text-emerald-400">Rp {grossRevenue.toLocaleString('id-ID')}</p>
+                <span className="block text-[10px] text-slate-500">{completedOrders.length} transaksi selesai</span>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">HPP / Modal Bahan Baku</span>
+                <p className="text-2xl font-black text-rose-400">Rp {totalCOGS.toLocaleString('id-ID')}</p>
+                <span className="block text-[10px] text-slate-500">Modal pokok barang terjual</span>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Beban Operasional</span>
+                <p className="text-2xl font-black text-amber-400">Rp {totalOPEX.toLocaleString('id-ID')}</p>
+                <span className="block text-[10px] text-slate-500">Packing, pengiriman, overhead</span>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-900/50 bg-emerald-950/20 p-5 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Net Profit (Laba Bersih)</span>
+                <p className="text-2xl font-black text-emerald-300">Rp {netProfit.toLocaleString('id-ID')}</p>
+                <span className="block text-[10px] text-emerald-500/80 font-bold">Margin Keuntungan: {netProfitMargin}%</span>
+              </div>
+            </div>
+
+            {/* Detail Laporan Akuntansi Laba Rugi & Penginputan Operasional */}
+            <div className="grid gap-6 lg:grid-cols-3">
+              {/* Table Income Statement (Laba Rugi Formal) */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+                <h3 className="font-bold text-white text-sm border-b border-slate-800 pb-3 flex justify-between items-center">
+                  <span>📑 Financial Statement (Rincian Akuntansi)</span>
+                  <span className="text-xs text-slate-500 font-normal">Mata Uang: IDR (Rupiah)</span>
+                </h3>
+
+                <div className="space-y-3 text-xs">
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-300 font-medium">Pendapatan Kotor / Revenue (Lunas)</span>
+                    <span className="font-bold text-emerald-400">Rp {grossRevenue.toLocaleString('id-ID')}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center py-1 text-rose-400">
+                    <span>(-) Harga Pokok Penjualan (HPP / COGS)</span>
+                    <span className="font-bold">- Rp {totalCOGS.toLocaleString('id-ID')}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center py-2 border-t border-slate-800 font-bold text-slate-200">
+                    <span>(=) Gross Profit (Laba Kotor)</span>
+                    <span>Rp {grossProfit.toLocaleString('id-ID')}</span>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-800">
+                    <span className="text-amber-400 font-bold block">(-) Breakdown Beban Operasional (OPEX):</span>
+                    
+                    <div className="grid grid-cols-2 gap-2 pl-2">
+                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span className="text-slate-400">Packaging & Kotak:</span>
+                        <input
+                          type="number"
+                          value={opex.packaging}
+                          onChange={(e) => handleOpexChange('packaging', e.target.value)}
+                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span className="text-slate-400">Marketing & Iklan:</span>
+                        <input
+                          type="number"
+                          value={opex.marketing}
+                          onChange={(e) => handleOpexChange('marketing', e.target.value)}
+                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span className="text-slate-400">Listrik & Operasional:</span>
+                        <input
+                          type="number"
+                          value={opex.operational}
+                          onChange={(e) => handleOpexChange('operational', e.target.value)}
+                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span className="text-slate-400">Biaya Kurir & Kirim:</span>
+                        <input
+                          type="number"
+                          value={opex.shipping}
+                          onChange={(e) => handleOpexChange('shipping', e.target.value)}
+                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center py-3 border-t-2 border-slate-700 font-black text-sm bg-emerald-950/40 p-4 rounded-xl border border-emerald-900/50 mt-4">
+                    <span className="text-emerald-400">(=) LABA BERSIH OPERASIONAL (NET PROFIT)</span>
+                    <span className="text-emerald-300 text-base">Rp {netProfit.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar Analisis Cara Bayar & Piutang */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-6">
+                <h3 className="font-bold text-white text-sm border-b border-slate-800 pb-3">💳 Stream Kas Masuk per Cara Bayar</h3>
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1 text-slate-300">
+                      <span>🏦 Transfer Bank</span>
+                      <span className="text-emerald-400">Rp {(paymentMethodSummary['Transfer Bank'] || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full"
+                        style={{ width: `${grossRevenue > 0 ? ((paymentMethodSummary['Transfer Bank'] || 0) / grossRevenue) * 100 : 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1 text-slate-300">
+                      <span>📱 QRIS</span>
+                      <span className="text-emerald-400">Rp {(paymentMethodSummary['QRIS'] || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 rounded-full"
+                        style={{ width: `${grossRevenue > 0 ? ((paymentMethodSummary['QRIS'] || 0) / grossRevenue) * 100 : 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1 text-slate-300">
+                      <span>💵 Tunai / Cash</span>
+                      <span className="text-emerald-400">Rp {(paymentMethodSummary['Tunai / Cash'] || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${grossRevenue > 0 ? ((paymentMethodSummary['Tunai / Cash'] || 0) / grossRevenue) * 100 : 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800 pt-4 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Piutang Pelanggan (Pending)</span>
+                  <p className="text-xl font-black text-amber-400">Rp {pendingRevenue.toLocaleString('id-ID')}</p>
+                  <p className="text-[10px] text-slate-500">{pendingOrders.length} transaksi menanti konfirmasi pembayaran.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: MANAJEMEN PESANAN & CARA BAYAR (INTERAKTIF FIX) */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             {/* Filter Bar */}
-            <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-5 items-end">
+            <div className="grid gap-3 rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:grid-cols-5 items-end">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Cari Pesanan</label>
                 <input
@@ -284,7 +489,7 @@ export default function AdminDashboard() {
                   placeholder="Nama, WA, ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2 text-xs text-white"
                 />
               </div>
               <div>
@@ -292,7 +497,7 @@ export default function AdminDashboard() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2 text-xs text-white"
                 >
                   <option value="all">Semua Status</option>
                   <option value="pending">Pending</option>
@@ -305,7 +510,7 @@ export default function AdminDashboard() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2 text-xs text-white"
                 />
               </div>
               <div>
@@ -314,7 +519,7 @@ export default function AdminDashboard() {
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2 text-xs text-white"
                 />
               </div>
               <button
@@ -324,68 +529,70 @@ export default function AdminDashboard() {
                   setSearchQuery('');
                   setStatusFilter('all');
                 }}
-                className="rounded-xl bg-slate-100 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                className="rounded-xl bg-slate-800 py-2 text-xs font-bold text-slate-300 hover:bg-slate-700"
               >
                 Reset Filter
               </button>
             </div>
 
-            {/* Tabel Pesanan Lengkap dengan CARA BAYAR */}
-            <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b">
+            {/* Tabel Pesanan Lengkap dengan FIX CARA BAYAR */}
+            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
                   <tr>
                     <th className="p-4">ID / Tanggal</th>
                     <th className="p-4">Pelanggan</th>
                     <th className="p-4">Detail Items</th>
                     <th className="p-4">Total</th>
-                    <th className="p-4">Cara Bayar</th>
+                    <th className="p-4">Cara Bayar (Interaktif)</th>
                     <th className="p-4">Status</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-slate-800">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 italic">
+                      <td colSpan={7} className="p-8 text-center text-slate-500 italic">
                         Tidak ada transaksi pesanan ditemukan.
                       </td>
                     </tr>
                   ) : (
                     filteredOrders.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50">
-                        <td className="p-4 font-mono font-bold">
+                      <tr key={item.id} className="hover:bg-slate-850 transition-all">
+                        <td className="p-4 font-mono font-bold text-emerald-400">
                           #{item.id}
-                          <div className="text-[10px] font-normal text-slate-400">
+                          <div className="text-[10px] font-normal text-slate-500">
                             {item.created_at ? item.created_at.split('T')[0] : '-'}
                           </div>
                         </td>
                         <td className="p-4">
-                          <div className="font-semibold text-slate-900">{item.customer_name}</div>
-                          <div className="text-xs text-slate-400">{item.customer_phone}</div>
+                          <div className="font-semibold text-white">{item.customer_name}</div>
+                          <div className="text-[10px] text-slate-400">{item.customer_phone}</div>
                         </td>
-                        <td className="p-4 text-xs">{item.items}</td>
-                        <td className="p-4 font-bold text-slate-900">
+                        <td className="p-4 text-slate-300">{item.items}</td>
+                        <td className="p-4 font-bold text-white">
                           Rp {Number(item.total_price).toLocaleString('id-ID')}
                         </td>
-                        {/* FITUR CARA BAYAR (TF, QRIS, TUNAI) */}
+
+                        {/* CARA BAYAR INTERAKTIF (LANSUNG UPDATE KE SUPABASE) */}
                         <td className="p-4">
                           <select
                             value={item.payment_method || 'Transfer Bank'}
                             onChange={(e) => handlePaymentMethodChange(item.id, e.target.value)}
-                            className="rounded-lg border bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700"
+                            className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-1.5 font-bold text-emerald-300 focus:outline-none focus:border-emerald-500"
                           >
                             <option value="Transfer Bank">🏦 Transfer Bank</option>
                             <option value="QRIS">📱 QRIS</option>
                             <option value="Tunai / Cash">💵 Tunai / Cash</option>
                           </select>
                         </td>
+
                         <td className="p-4">
                           <select
                             value={item.status}
                             onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
-                              item.status === 'lunas' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            className={`rounded-xl px-3 py-1.5 font-bold text-xs ${
+                              item.status === 'lunas' ? 'bg-emerald-950 border border-emerald-800 text-emerald-400' : 'bg-amber-950 border border-amber-800 text-amber-400'
                             }`}
                           >
                             <option value="pending">PENDING</option>
@@ -393,17 +600,16 @@ export default function AdminDashboard() {
                           </select>
                         </td>
                         <td className="p-4 text-center">
-                          <div className="flex justify-center gap-1.5">
+                          <div className="flex justify-center gap-2">
                             <button
                               onClick={() => sendWhatsApp(item)}
-                              className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs text-white font-bold hover:bg-emerald-700"
-                              title="Kirim Pesan WA"
+                              className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs text-white font-bold hover:bg-emerald-500"
                             >
                               📱 WA
                             </button>
                             <button
                               onClick={() => setInvoiceOrder(item)}
-                              className="rounded-lg bg-purple-50 px-2.5 py-1.5 text-xs font-bold text-purple-700 border hover:bg-purple-100"
+                              className="rounded-xl bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700"
                             >
                               🧾 Invoice
                             </button>
@@ -418,165 +624,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 2: CATATAN KEUANGAN DETAIL (HPP, OPERASIONAL, NET PROFIT) */}
-        {activeTab === 'finance' && (
-          <div className="space-y-6">
-            {/* Header Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border bg-white p-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Catatan Keuangan & Laba Rugi Usaha</h2>
-                <p className="text-xs text-slate-500">Perhitungan real-time HPP, Beban Operasional, dan Keuntungan Bersih.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="rounded-xl border p-2 text-xs"
-                />
-                <span className="text-xs font-bold text-slate-400">s/d</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="rounded-xl border p-2 text-xs"
-                />
-                <button
-                  onClick={handleExportCSV}
-                  className="rounded-xl bg-emerald-800 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-900"
-                >
-                  📥 Export CSV
-                </button>
-              </div>
-            </div>
-
-            {/* Rincian Laporan Keuangan (Laba / Rugi) */}
-            <div className="grid gap-6 md:grid-cols-3">
-              {/* Ringkasan Laba Bersih Utama */}
-              <div className="md:col-span-2 rounded-2xl border bg-white p-6 shadow-sm space-y-5">
-                <h3 className="font-bold text-slate-900 border-b pb-3 text-sm">📊 Laporan Keuangan Ringkas (Pendapatan Lunas)</h3>
-
-                <div className="space-y-3 text-sm">
-                  {/* Total Pendapatan Kotor */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-600 font-medium">Total Pendapatan (Omset Kotor)</span>
-                    <span className="font-bold text-slate-900">Rp {totalRevenue.toLocaleString('id-ID')}</span>
-                  </div>
-
-                  {/* Beban HPP */}
-                  <div className="flex justify-between items-center text-rose-600">
-                    <span className="font-medium">(-) HPP / Modal Bahan Baku Parcel</span>
-                    <span className="font-bold">- Rp {totalHPP.toLocaleString('id-ID')}</span>
-                  </div>
-
-                  <hr />
-
-                  {/* Laba Kotor */}
-                  <div className="flex justify-between items-center font-bold text-slate-800">
-                    <span>(=) Laba Kotor (Gross Profit)</span>
-                    <span>Rp {grossProfit.toLocaleString('id-ID')}</span>
-                  </div>
-
-                  {/* Beban Operasional Input */}
-                  <div className="flex justify-between items-center text-rose-600 bg-rose-50 p-3 rounded-xl">
-                    <div>
-                      <span className="font-bold block">(-) Beban Operasional & Pengemasan</span>
-                      <span className="text-[10px] text-rose-500">Kotak, pita, kartu ucapan, listrik, kurir, dll.</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-bold">Rp</span>
-                      <input
-                        type="number"
-                        value={operationalCost}
-                        onChange={(e) => handleSaveOperationalCost(e.target.value)}
-                        className="w-28 rounded-lg border p-1 text-right text-xs font-bold text-slate-900"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-
-                  <hr className="border-slate-300" />
-
-                  {/* Laba Bersih Akhir */}
-                  <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-xl">
-                    <div>
-                      <span className="text-base font-black text-emerald-900 block">(=) LABA BERSIH (NET PROFIT)</span>
-                      <span className="text-xs text-emerald-700 font-semibold">Margin Bersih: {netMarginPercent}%</span>
-                    </div>
-                    <span className="text-2xl font-black text-emerald-700">
-                      Rp {netProfit.toLocaleString('id-ID')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sidebar Pendapatan Berdasarkan Cara Bayar */}
-              <div className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
-                <h3 className="font-bold text-slate-900 border-b pb-3 text-sm">💳 Kas Masuk per Cara Bayar</h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold mb-1">
-                      <span>🏦 Transfer Bank</span>
-                      <span>Rp {(paymentBreakdown['Transfer Bank'] || 0).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-full bg-blue-600"
-                        style={{
-                          width: `${totalRevenue > 0 ? ((paymentBreakdown['Transfer Bank'] || 0) / totalRevenue) * 100 : 0}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold mb-1">
-                      <span>📱 QRIS</span>
-                      <span>Rp {(paymentBreakdown['QRIS'] || 0).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-full bg-purple-600"
-                        style={{
-                          width: `${totalRevenue > 0 ? ((paymentBreakdown['QRIS'] || 0) / totalRevenue) * 100 : 0}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold mb-1">
-                      <span>💵 Tunai / Cash</span>
-                      <span>Rp {(paymentBreakdown['Tunai / Cash'] || 0).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-600"
-                        style={{
-                          width: `${totalRevenue > 0 ? ((paymentBreakdown['Tunai / Cash'] || 0) / totalRevenue) * 100 : 0}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 border-t pt-4 space-y-2">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Piutang Belum Terbayar</p>
-                  <p className="text-lg font-black text-amber-600">Rp {pendingRevenue.toLocaleString('id-ID')}</p>
-                  <p className="text-[10px] text-slate-400">{pendingOrders.length} pesanan dengan status PENDING.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: MANAJEMEN STOK PRODUK / PARCEL */}
+        {/* TAB 3: MANAJEMEN STOK & HPP PRODUK */}
         {activeTab === 'products' && (
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-3">
             {/* Form Tambah/Edit Produk */}
-            <div className="rounded-2xl border bg-white p-5 space-y-4">
-              <h2 className="text-base font-bold text-slate-900">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+              <h2 className="text-base font-bold text-white">
                 {editingProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
               </h2>
               <form onSubmit={handleSaveProduct} className="space-y-3">
@@ -585,7 +638,7 @@ export default function AdminDashboard() {
                   placeholder="Nama Parcel..."
                   value={productForm.name}
                   onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                   required
                 />
                 <input
@@ -593,7 +646,7 @@ export default function AdminDashboard() {
                   placeholder="Harga Jual Pelanggan (Rp)..."
                   value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                   required
                 />
                 <input
@@ -601,21 +654,21 @@ export default function AdminDashboard() {
                   placeholder="Harga Modal / HPP Produk (Rp)..."
                   value={productForm.cost_price}
                   onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                 />
                 <input
                   type="number"
                   placeholder="Stok Tersedia..."
                   value={productForm.stock}
                   onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                   required
                 />
                 <textarea
                   placeholder="Deskripsi Isi Parcel..."
                   value={productForm.description}
                   onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                   rows={3}
                 />
                 <input
@@ -623,10 +676,10 @@ export default function AdminDashboard() {
                   placeholder="URL Gambar..."
                   value={productForm.image_url}
                   onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
-                  className="w-full rounded-xl border p-2 text-xs"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
                 />
                 <div className="flex gap-2">
-                  <button type="submit" className="flex-1 rounded-xl bg-emerald-700 py-2 text-xs font-bold text-white">
+                  <button type="submit" className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white hover:bg-emerald-500">
                     Simpan Produk
                   </button>
                   {editingProduct && (
@@ -636,7 +689,7 @@ export default function AdminDashboard() {
                         setEditingProduct(null);
                         setProductForm({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
                       }}
-                      className="rounded-xl border px-3 text-xs font-bold"
+                      className="rounded-xl border border-slate-700 bg-slate-800 px-3 text-xs font-bold text-slate-300"
                     >
                       Batal
                     </button>
@@ -646,39 +699,39 @@ export default function AdminDashboard() {
             </div>
 
             {/* Daftar Produk */}
-            <div className="md:col-span-2 overflow-hidden rounded-2xl border bg-white shadow-sm">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b">
+            <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
                   <tr>
                     <th className="p-4">Produk</th>
                     <th className="p-4">Harga Jual</th>
-                    <th className="p-4">Harga Modal (HPP)</th>
+                    <th className="p-4">Modal (HPP)</th>
                     <th className="p-4">Stok</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-slate-800">
                   {products.map((p) => (
                     <tr key={p.id}>
-                      <td className="p-4 font-semibold text-slate-900">{p.name}</td>
-                      <td className="p-4 font-bold text-emerald-700">Rp {Number(p.price).toLocaleString('id-ID')}</td>
-                      <td className="p-4 text-slate-500">
+                      <td className="p-4 font-semibold text-white">{p.name}</td>
+                      <td className="p-4 font-bold text-emerald-400">Rp {Number(p.price).toLocaleString('id-ID')}</td>
+                      <td className="p-4 text-rose-400">
                         {p.cost_price ? `Rp ${Number(p.cost_price).toLocaleString('id-ID')}` : '-'}
                       </td>
-                      <td className="p-4 font-bold">{p.stock} pcs</td>
+                      <td className="p-4 font-bold text-white">{p.stock} pcs</td>
                       <td className="p-4 text-center space-x-2">
                         <button
                           onClick={() => {
                             setEditingProduct(p);
                             setProductForm(p);
                           }}
-                          className="text-xs font-bold text-emerald-700 underline"
+                          className="text-xs font-bold text-emerald-400 underline"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDeleteProduct(p.id)}
-                          className="text-xs font-bold text-rose-600 underline"
+                          className="text-xs font-bold text-rose-400 underline"
                         >
                           Hapus
                         </button>
@@ -691,48 +744,28 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 4: PENGATURAN PASSWORD */}
-        {activeTab === 'settings' && (
-          <div className="max-w-md rounded-2xl border bg-white p-6 space-y-4">
-            <h2 className="text-lg font-bold text-slate-900">Ganti Password Admin</h2>
-            <form onSubmit={handleUpdatePassword} className="space-y-3">
-              <input
-                type="password"
-                placeholder="Password baru..."
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-xl border p-2.5 text-sm"
-                required
-              />
-              <button type="submit" className="w-full rounded-xl bg-emerald-700 py-2.5 text-xs font-bold text-white">
-                Update Password
-              </button>
-            </form>
-          </div>
-        )}
-
         {/* Modal Printable Invoice */}
         {invoiceOrder && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4 z-50">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 space-y-4 shadow-2xl">
+          <div className="fixed inset-0 flex items-center justify-center bg-black/80 p-4 z-50">
+            <div className="w-full max-w-lg rounded-3xl bg-white text-slate-900 p-8 space-y-4 shadow-2xl">
               <div className="text-center border-b pb-4">
-                <h2 className="text-xl font-black text-emerald-800">INVOICE PEMESANAN</h2>
-                <p className="text-xs text-slate-500">PARCEL STORE - #{invoiceOrder.id}</p>
+                <h2 className="text-2xl font-black text-emerald-900">INVOICE OFFICIAL</h2>
+                <p className="text-xs text-slate-500">PARCEL STORE - TRANSACTION #{invoiceOrder.id}</p>
               </div>
               <div className="space-y-2 text-xs">
-                <p><strong>Nama:</strong> {invoiceOrder.customer_name}</p>
+                <p><strong>Nama Pelanggan:</strong> {invoiceOrder.customer_name}</p>
                 <p><strong>No. WhatsApp:</strong> {invoiceOrder.customer_phone}</p>
-                <p><strong>Rincian Pesanan:</strong> {invoiceOrder.items}</p>
-                <p><strong>Total Pembayaran:</strong> Rp {Number(invoiceOrder.total_price).toLocaleString('id-ID')}</p>
-                <p><strong>Cara Bayar:</strong> {invoiceOrder.payment_method || 'Transfer Bank'}</p>
-                <p><strong>Status:</strong> {invoiceOrder.status.toUpperCase()}</p>
+                <p><strong>Detail Items:</strong> {invoiceOrder.items}</p>
+                <p><strong>Total Tagihan:</strong> Rp {Number(invoiceOrder.total_price).toLocaleString('id-ID')}</p>
+                <p><strong>Metode Pembayaran:</strong> {invoiceOrder.payment_method || 'Transfer Bank'}</p>
+                <p><strong>Status Pembayaran:</strong> <span className="uppercase font-bold text-emerald-700">{invoiceOrder.status}</span></p>
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <button onClick={() => setInvoiceOrder(null)} className="rounded-xl border px-4 py-2 text-xs font-bold">
+                <button onClick={() => setInvoiceOrder(null)} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700">
                   Tutup
                 </button>
-                <button onClick={() => window.print()} className="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white">
-                  🖨️ Cetak Invoice
+                <button onClick={() => window.print()} className="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800">
+                  🖨️ Cetak / PDF Invoice
                 </button>
               </div>
             </div>
