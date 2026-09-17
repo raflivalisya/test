@@ -36,18 +36,21 @@ export default function AdminDashboard() {
   // Invoice Modal
   const [invoiceOrder, setInvoiceOrder] = useState(null);
 
-  // Form Produk
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [productForm, setProductForm] = useState({
+  // Form Produk Initial State
+  const initialProductForm = {
     name: '',
     price: '',
     cost_price: '',
     stock: '',
-    category: 'Exclusive Hampers', // Tambahan
-    badge: '',                    // Tambahan
+    category: 'Exclusive Hampers',
+    badge: '',
     description: '',
     image_url: ''
-  });
+  };
+
+  // Form Produk
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productForm, setProductForm] = useState(initialProductForm);
 
   useEffect(() => {
     const savedPass = localStorage.getItem('admin_password');
@@ -84,27 +87,28 @@ export default function AdminDashboard() {
     if (!error && data) setCashTransactions(data);
   };
 
-// Helper untuk mengubah link Google Drive menjadi direct image URL
-const convertGoogleDriveUrl = (url) => {
-  if (!url) return '';
-  
-  // Mencari ID file Google Drive dari berbagai format link
-  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-  if (match && match[1]) {
-    const fileId = match[1];
-    // Menggunakan CDN Google untuk menampilkan gambar langsung
-    return `https://lh3.googleusercontent.com/d/${fileId}`;
-  }
-  
-  return url; // Jika bukan link Google Drive, gunakan URL asli
-};
+  // Helper untuk mengubah link Google Drive menjadi direct image URL
+  const convertGoogleDriveUrl = (url) => {
+    if (!url) return '';
+    
+    // Mencari ID file Google Drive dari berbagai format link
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      const fileId = match[1];
+      // Menggunakan CDN Google untuk menampilkan gambar langsung
+      return `https://lh3.googleusercontent.com/d/${fileId}`;
+    }
+    
+    return url; // Jika bukan link Google Drive, gunakan URL asli
+  };
   
   // WhatsApp Direct
   const sendWhatsApp = (item) => {
+    if (!item.customer_phone) return alert('Nomor telepon pembeli tidak tersedia');
     let phone = item.customer_phone.replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
 
-    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di toko kami!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${item.status.toUpperCase()}*${item.notes ? `\n- Catatan: ${item.notes}` : ''}\n\nAda yang bisa kami bantu? 😊`;
+    const message = `Halo Kak *${item.customer_name || 'Pelanggan'}*,\n\nTerima kasih telah memesan di toko kami!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items || '-'}\n- Total: Rp ${Number(item.total_price || 0).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${(item.status || '').toUpperCase()}*${item.notes ? `\n- Catatan: ${item.notes}` : ''}\n\nAda yang bisa kami bantu? 😊`;
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
@@ -189,20 +193,20 @@ const convertGoogleDriveUrl = (url) => {
   };
 
   // CRUD Produk
-const handleSaveProduct = async (e) => {
+  const handleSaveProduct = async (e) => {
     e.preventDefault();
 
     // Otomatis ubah link jika yang dimasukkan adalah link Google Drive
     const rawImageUrl = productForm.image_url || productForm.image || '';
     const formattedImageUrl = convertGoogleDriveUrl(rawImageUrl);
 
-  const payload = {
+    const payload = {
       name: productForm.name,
       price: Number(productForm.price),
       cost_price: productForm.cost_price ? Number(productForm.cost_price) : 0,
       stock: Number(productForm.stock),
-      category: productForm.category || 'Exclusive Hampers', // Tambahan
-      badge: productForm.badge || '',                       // Tambahan
+      category: productForm.category || 'Exclusive Hampers',
+      badge: productForm.badge || '',
       description: productForm.description || '',
       image_url: formattedImageUrl,
       image: formattedImageUrl
@@ -222,10 +226,29 @@ const handleSaveProduct = async (e) => {
       alert('Gagal menyimpan produk: ' + errorMsg.message);
     } else {
       alert(editingProduct ? 'Produk berhasil diperbarui!' : 'Produk berhasil ditambahkan!');
-      setProductForm({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
+      setProductForm(initialProductForm);
       setEditingProduct(null);
       fetchProducts();
     }
+  };
+
+  const handleEditProductClick = (product) => {
+    setEditingProduct(product);
+    setProductForm({
+      name: product.name || '',
+      price: product.price || '',
+      cost_price: product.cost_price || '',
+      stock: product.stock || '',
+      category: product.category || 'Exclusive Hampers',
+      badge: product.badge || '',
+      description: product.description || '',
+      image_url: product.image_url || product.image || ''
+    });
+  };
+
+  const handleCancelEditProduct = () => {
+    setEditingProduct(null);
+    setProductForm(initialProductForm);
   };
 
   const handleDeleteProduct = async (id) => {
@@ -238,9 +261,9 @@ const handleSaveProduct = async (e) => {
   // Filter Orders
   const filteredOrders = orders.filter((o) => {
     const matchesSearch =
-      o.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customer_phone?.includes(searchQuery) ||
-      o.id?.toString().includes(searchQuery);
+      (o.customer_name && o.customer_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (o.customer_phone && o.customer_phone.includes(searchQuery)) ||
+      (o.id && o.id.toString().includes(searchQuery));
 
     const matchesStatus =
       statusFilter === 'all' ? true : statusFilter === 'lunas' ? o.status === 'lunas' : o.status === 'pending';
@@ -261,7 +284,7 @@ const handleSaveProduct = async (e) => {
   const orderSalesRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
   const pendingRevenue = pendingOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
 
-  const totalCOGS = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.6), 0);
+  const totalCOGS = completedOrders.reduce((sum, item) => sum + Number(item.cost_price ?? (item.total_price * 0.6)), 0);
 
   const manualIncomes = cashTransactions.filter((t) => t.type === 'pemasukan').reduce((sum, t) => sum + Number(t.amount || 0), 0);
   const manualExpenses = cashTransactions.filter((t) => t.type === 'pengeluaran').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -394,8 +417,6 @@ const handleSaveProduct = async (e) => {
               </div>
             </div>
 
-
-         
             {/* Form Pemasukan/Pengeluaran */}
             <div className="grid gap-6 lg:grid-cols-3">
               <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
@@ -508,7 +529,7 @@ const handleSaveProduct = async (e) => {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`font-mono font-bold text-sm ${item.type === 'pemasukan' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {item.type === 'pemasukan' ? '+' : '-'} Rp {Number(item.amount).toLocaleString('id-ID')}
+                            {item.type === 'pemasukan' ? '+' : '-'} Rp {Number(item.amount || 0).toLocaleString('id-ID')}
                           </span>
                           <button onClick={() => handleDeleteCashTransaction(item.id)} className="text-slate-600 hover:text-rose-400 font-bold">
                             ✕
@@ -523,7 +544,7 @@ const handleSaveProduct = async (e) => {
           </div>
         )}
 
-        {/* TAB 2: MANAJEMEN PESANAN (DENGAN FITUR HAPUS) */}
+        {/* TAB 2: MANAJEMEN PESANAN */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             {/* Filter Bar */}
@@ -618,7 +639,7 @@ const handleSaveProduct = async (e) => {
                         </td>
                         <td className="p-4 text-slate-300">{item.items}</td>
                         <td className="p-4 font-bold text-white">
-                          Rp {Number(item.total_price).toLocaleString('id-ID')}
+                          Rp {Number(item.total_price || 0).toLocaleString('id-ID')}
                         </td>
 
                         {/* Cara Bayar */}
@@ -659,7 +680,7 @@ const handleSaveProduct = async (e) => {
                           )}
                         </td>
 
-                        {/* Tombol Aksi (DENGAN TOMBOL HAPUS PESANAN) */}
+                        {/* Tombol Aksi */}
                         <td className="p-4 text-center">
                           <div className="flex justify-center items-center gap-1.5">
                             <button
@@ -683,7 +704,6 @@ const handleSaveProduct = async (e) => {
                             >
                               🧾 Invoice
                             </button>
-                            {/* 🔴 TOMBOL HAPUS PESANAN */}
                             <button
                               onClick={() => handleDeleteOrder(item.id)}
                               title="Hapus Pesanan"
@@ -706,107 +726,119 @@ const handleSaveProduct = async (e) => {
         {activeTab === 'products' && (
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-              <h2 className="text-base font-bold text-white">
-                {editingProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-white">
+                  {editingProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
+                </h2>
+                {editingProduct && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEditProduct}
+                    className="text-xs text-rose-400 hover:underline"
+                  >
+                    Batal Edit
+                  </button>
+                )}
+              </div>
               <form onSubmit={handleSaveProduct} className="space-y-3">
-  {/* Input Nama Produk */}
-  <input
-    type="text"
-    placeholder="Nama Produk..."
-    value={productForm.name}
-    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-    required
-  />
+                {/* Input Nama Produk */}
+                <input
+                  type="text"
+                  placeholder="Nama Produk..."
+                  value={productForm.name}
+                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                  required
+                />
 
-  {/* Input Harga Jual */}
-  <input
-    type="number"
-    placeholder="Harga Jual Pelanggan (Rp)..."
-    value={productForm.price}
-    onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-    required
-  />
+                {/* Input Harga Jual */}
+                <input
+                  type="number"
+                  placeholder="Harga Jual Pelanggan (Rp)..."
+                  value={productForm.price}
+                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                  required
+                />
 
-  {/* Input Harga Modal */}
-  <input
-    type="number"
-    placeholder="Harga Modal / HPP Produk (Rp)..."
-    value={productForm.cost_price}
-    onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
-    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-  />
+                {/* Input Harga Modal */}
+                <input
+                  type="number"
+                  placeholder="Harga Modal / HPP Produk (Rp)..."
+                  value={productForm.cost_price}
+                  onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                />
 
-  {/* Input Stok */}
-  <input
-    type="number"
-    placeholder="Stok Tersedia..."
-    value={productForm.stock}
-    onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
-    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-    required
-  />
+                {/* Input Stok */}
+                <input
+                  type="number"
+                  placeholder="Stok Tersedia..."
+                  value={productForm.stock}
+                  onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                  required
+                />
 
-  {/* Input Deskripsi */}
-  <textarea
-    placeholder="Deskripsi Produk..."
-    value={productForm.description}
-    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-  ></textarea>
+                {/* Input Deskripsi */}
+                <textarea
+                  placeholder="Deskripsi Produk..."
+                  value={productForm.description}
+                  onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                  rows={3}
+                ></textarea>
 
-  {/* Input URL Gambar */}
-  <input
-    type="text"
-    placeholder="URL Gambar..."
-    value={productForm.image_url}
-    onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
-    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-  />
+                {/* Input URL Gambar */}
+                <input
+                  type="text"
+                  placeholder="URL Gambar..."
+                  value={productForm.image_url}
+                  onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                />
 
-  {/* Dropdown Kategori & Badge */}
-  <div className="grid grid-cols-2 gap-2">
-    <div>
-      <label className="block text-[10px] text-slate-400 mb-1">Kategori</label>
-      <select
-        value={productForm.category || 'Exclusive Hampers'}
-        onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-      >
-        <option value="Makanan & Sembako">Makanan & Sembako</option>
-        <option value="Exclusive Hampers">Exclusive Hampers</option>
-        <option value="Kombinasi Premium">Kombinasi Premium</option>
-        <option value="Corporate Gift">Corporate Gift</option>
-      </select>
-    </div>
+                {/* Dropdown Kategori & Badge */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Kategori</label>
+                    <select
+                      value={productForm.category || 'Exclusive Hampers'}
+                      onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                    >
+                      <option value="Makanan & Sembako">Makanan & Sembako</option>
+                      <option value="Exclusive Hampers">Exclusive Hampers</option>
+                      <option value="Kombinasi Premium">Kombinasi Premium</option>
+                      <option value="Corporate Gift">Corporate Gift</option>
+                    </select>
+                  </div>
 
-    <div>
-      <label className="block text-[10px] text-slate-400 mb-1">Badge Highlight</label>
-      <select
-        value={productForm.badge || ''}
-        onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
-        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-      >
-        <option value="">Tanpa Badge</option>
-        <option value="Paling Laris">🔥 Paling Laris</option>
-        <option value="Mewah">✨ Mewah</option>
-        <option value="Rekomendasi">👍 Rekomendasi</option>
-        <option value="Hemat">🏷️ Hemat</option>
-      </select>
-    </div>
-  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Badge Highlight</label>
+                    <select
+                      value={productForm.badge || ''}
+                      onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                    >
+                      <option value="">Tanpa Badge</option>
+                      <option value="Paling Laris">🔥 Paling Laris</option>
+                      <option value="Mewah">✨ Mewah</option>
+                      <option value="Rekomendasi">👍 Rekomendasi</option>
+                      <option value="Hemat">🏷️ Hemat</option>
+                    </select>
+                  </div>
+                </div>
 
-  {/* Tombol Simpan */}
-  <button
-    type="submit"
-    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition text-xs"
-  >
-    {editingProduct ? 'Update Produk' : 'Simpan Produk'}
-  </button>
-</form>
-</div>
+                {/* Tombol Simpan */}
+                <button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition text-xs"
+                >
+                  {editingProduct ? 'Update Produk' : 'Simpan Produk'}
+                </button>
+              </form>
+            </div>
 
             <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
               <table className="w-full text-left text-xs">
@@ -820,33 +852,38 @@ const handleSaveProduct = async (e) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {products.map((p) => (
-                    <tr key={p.id}>
-                      <td className="p-4 font-semibold text-white">{p.name}</td>
-                      <td className="p-4 font-bold text-emerald-400">Rp {Number(p.price).toLocaleString('id-ID')}</td>
-                      <td className="p-4 text-rose-400">
-                        {p.cost_price ? `Rp ${Number(p.cost_price).toLocaleString('id-ID')}` : '-'}
-                      </td>
-                      <td className="p-4 font-bold text-white">{p.stock} pcs</td>
-                      <td className="p-4 text-center space-x-2">
-                        <button
-                          onClick={() => {
-                            setEditingProduct(p);
-                            setProductForm(p);
-                          }}
-                          className="text-xs font-bold text-emerald-400 underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(p.id)}
-                          className="text-xs font-bold text-rose-400 underline"
-                        >
-                          Hapus
-                        </button>
+                  {products.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-slate-500 italic">
+                        Belum ada daftar produk.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    products.map((p) => (
+                      <tr key={p.id}>
+                        <td className="p-4 font-semibold text-white">{p.name}</td>
+                        <td className="p-4 font-bold text-emerald-400">Rp {Number(p.price || 0).toLocaleString('id-ID')}</td>
+                        <td className="p-4 text-rose-400">
+                          {p.cost_price ? `Rp ${Number(p.cost_price).toLocaleString('id-ID')}` : '-'}
+                        </td>
+                        <td className="p-4 font-bold text-white">{p.stock} pcs</td>
+                        <td className="p-4 text-center space-x-2">
+                          <button
+                            onClick={() => handleEditProductClick(p)}
+                            className="text-xs font-bold text-emerald-400 underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(p.id)}
+                            className="text-xs font-bold text-rose-400 underline"
+                          >
+                            Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -890,22 +927,42 @@ const handleSaveProduct = async (e) => {
 
         {/* MODAL: PRINTABLE INVOICE */}
         {invoiceOrder && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/80 p-4 z-50">
-            <div className="w-full max-w-lg rounded-3xl bg-white text-slate-900 p-8 space-y-4 shadow-2xl">
+          <div className="fixed inset-0 flex items-center justify-center bg-black/80 p-4 z-50 print-invoice-container">
+            <style font-display="block">{`
+              @media print {
+                body * {
+                  visibility: hidden;
+                }
+                .print-invoice-modal, .print-invoice-modal * {
+                  visibility: visible;
+                }
+                .print-invoice-modal {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                  box-shadow: none !important;
+                }
+                .no-print {
+                  display: none !important;
+                }
+              }
+            `}</style>
+            <div className="print-invoice-modal w-full max-w-lg rounded-3xl bg-white text-slate-900 p-8 space-y-4 shadow-2xl">
               <div className="text-center border-b pb-4">
                 <h2 className="text-2xl font-black text-emerald-900">INVOICE OFFICIAL</h2>
                 <p className="text-xs text-slate-500">TRANSACTION #{invoiceOrder.id}</p>
               </div>
               <div className="space-y-2 text-xs">
-                <p><strong>Nama Pelanggan:</strong> {invoiceOrder.customer_name}</p>
-                <p><strong>No. WhatsApp:</strong> {invoiceOrder.customer_phone}</p>
-                <p><strong>Detail Items:</strong> {invoiceOrder.items}</p>
-                <p><strong>Total Tagihan:</strong> Rp {Number(invoiceOrder.total_price).toLocaleString('id-ID')}</p>
+                <p><strong>Nama Pelanggan:</strong> {invoiceOrder.customer_name || '-'}</p>
+                <p><strong>No. WhatsApp:</strong> {invoiceOrder.customer_phone || '-'}</p>
+                <p><strong>Detail Items:</strong> {invoiceOrder.items || '-'}</p>
+                <p><strong>Total Tagihan:</strong> Rp {Number(invoiceOrder.total_price || 0).toLocaleString('id-ID')}</p>
                 <p><strong>Metode Pembayaran:</strong> {invoiceOrder.payment_method || 'Transfer Bank'}</p>
                 <p><strong>Status Pembayaran:</strong> <span className="uppercase font-bold text-emerald-700">{invoiceOrder.status}</span></p>
                 {invoiceOrder.notes && <p><strong>Catatan Tambahan:</strong> {invoiceOrder.notes}</p>}
               </div>
-              <div className="flex justify-end gap-2 pt-4 border-t">
+              <div className="flex justify-end gap-2 pt-4 border-t no-print">
                 <button onClick={() => setInvoiceOrder(null)} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700">
                   Tutup
                 </button>
