@@ -75,6 +75,21 @@ export default function AdminDashboard() {
     if (!error && data) setCashTransactions(data);
   };
 
+// Helper untuk mengubah link Google Drive menjadi direct image URL
+const convertGoogleDriveUrl = (url) => {
+  if (!url) return '';
+  
+  // Mencari ID file Google Drive dari berbagai format link
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    const fileId = match[1];
+    // Menggunakan CDN Google untuk menampilkan gambar langsung
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
+  }
+  
+  return url; // Jika bukan link Google Drive, gunakan URL asli
+};
+  
   // WhatsApp Direct
   const sendWhatsApp = (item) => {
     let phone = item.customer_phone.replace(/[^0-9]/g, '');
@@ -165,18 +180,21 @@ export default function AdminDashboard() {
   };
 
   // CRUD Produk
-// CRUD Produk (Sudah Diperbaiki)
-  const handleSaveProduct = async (e) => {
+const handleSaveProduct = async (e) => {
     e.preventDefault();
 
-    // Buat payload data yang aman
+    // Otomatis ubah link jika yang dimasukkan adalah link Google Drive
+    const rawImageUrl = productForm.image_url || productForm.image || '';
+    const formattedImageUrl = convertGoogleDriveUrl(rawImageUrl);
+
     const payload = {
       name: productForm.name,
       price: Number(productForm.price),
       cost_price: productForm.cost_price ? Number(productForm.cost_price) : 0,
       stock: Number(productForm.stock),
       description: productForm.description || '',
-      image_url: productForm.image_url || ''
+      image_url: formattedImageUrl,
+      image: formattedImageUrl
     };
 
     let errorMsg = null;
@@ -190,11 +208,7 @@ export default function AdminDashboard() {
     }
 
     if (errorMsg) {
-      alert(
-        'Gagal menyimpan produk!\n\n' +
-        'Penyebab umum: Kolom "cost_price" belum dibuat di tabel "products" Supabase.\n\n' +
-        'Detail Error: ' + errorMsg.message
-      );
+      alert('Gagal menyimpan produk: ' + errorMsg.message);
     } else {
       alert(editingProduct ? 'Produk berhasil diperbarui!' : 'Produk berhasil ditambahkan!');
       setProductForm({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
