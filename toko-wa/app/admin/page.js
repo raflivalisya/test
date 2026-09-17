@@ -613,41 +613,6 @@ const handleSaveProduct = async (e) => {
               </button>
             </div>
 
-         {/* Pindahkan kode ini ke DALAM tag <form> */}
-<div className="grid grid-cols-2 gap-3 mb-3">
-  <div>
-    <label className="block text-xs text-slate-400 mb-1">Kategori (Pojok Kiri Atas)</label>
-    <select
-      value={productForm.category}
-      onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white"
-    >
-      <option value="Makanan & Sembako">Makanan & Sembako</option>
-      <option value="Exclusive Hampers">Exclusive Hampers</option>
-      <option value="Kombinasi Premium">Kombinasi Premium</option>
-      <option value="Corporate Gift">Corporate Gift</option>
-    </select>
-  </div>
-
-  <div>
-    <label className="block text-xs text-slate-400 mb-1">Badge Highlight (Pojok Kanan Atas)</label>
-    <select
-      value={productForm.badge}
-      onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
-      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white"
-    >
-      <option value="">Tanpa Badge</option>
-      <option value="Paling Laris">🔥 Paling Laris</option>
-      <option value="Mewah">✨ Mewah</option>
-      <option value="Rekomendasi">👍 Rekomendasi</option>
-      <option value="Hemat">🏷️ Hemat</option>
-    </select>
-  </div>
-</div>
-
-
-
-         
             {/* Tabel Orders */}
             <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
               <table className="w-full text-left text-xs">
