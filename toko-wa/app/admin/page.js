@@ -710,94 +710,103 @@ const handleSaveProduct = async (e) => {
                 {editingProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
               </h2>
               <form onSubmit={handleSaveProduct} className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Nama Produk..."
-                  value={productForm.name}
-                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-                  required
-                />
-                <input
-                  type="number"
-                  placeholder="Harga Jual Pelanggan (Rp)..."
-                  value={productForm.price}
-                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-                  required
-                />
-                <input
-                  type="number"
-                  placeholder="Harga Modal / HPP Produk (Rp)..."
-                  value={productForm.cost_price}
-                  onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-                />
-                <input
-                  type="number"
-                  placeholder="Stok Tersedia..."
-                  value={productForm.stock}
-                  onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-                  required
-                />
-                <textarea
-                  placeholder="Deskripsi Produk..."
-                  value={productForm.description}
-                  onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-                  rows={3}
-                />
-                <input
-                  type="text"
-                  placeholder="URL Gambar..."
-                  value={productForm.image_url}
-                  onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-                />
-               {/* ======================================================== */}
-      {/* 👇 TEMPATKAN KODE DROPDOWN BADGE & KATEGORI DI SINI 👇 */}
-      {/* ======================================================== */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-[10px] text-slate-400 mb-1">Kategori</label>
-          <select
-            value={productForm.category || 'Exclusive Hampers'}
-            onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-            className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-          >
-            <option value="Makanan & Sembako">Makanan & Sembako</option>
-            <option value="Exclusive Hampers">Exclusive Hampers</option>
-            <option value="Kombinasi Premium">Kombinasi Premium</option>
-            <option value="Corporate Gift">Corporate Gift</option>
-          </select>
-        </div>
+  {/* Input Nama Produk */}
+  <input
+    type="text"
+    placeholder="Nama Produk..."
+    value={productForm.name}
+    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+    required
+  />
 
-        <div>
-          <label className="block text-[10px] text-slate-400 mb-1">Badge Highlight</label>
-          <select
-            value={productForm.badge || ''}
-            onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
-            className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
-          >
-            <option value="">Tanpa Badge</option>
-            <option value="Paling Laris">🔥 Paling Laris</option>
-            <option value="Mewah">✨ Mewah</option>
-            <option value="Rekomendasi">👍 Rekomendasi</option>
-            <option value="Hemat">🏷️ Hemat</option>
-          </select>
-        </div>
-      </div>
-      {/* ======================================================== */}
+  {/* Input Harga Jual */}
+  <input
+    type="number"
+    placeholder="Harga Jual Pelanggan (Rp)..."
+    value={productForm.price}
+    onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+    required
+  />
 
+  {/* Input Harga Modal */}
+  <input
+    type="number"
+    placeholder="Harga Modal / HPP Produk (Rp)..."
+    value={productForm.cost_price}
+    onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
+    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+  />
 
-      {/* 7. Tombol Simpan Produk */}
-      <button type="submit" className="...">
-        Simpan Produk
-      </button>
+  {/* Input Stok */}
+  <input
+    type="number"
+    placeholder="Stok Tersedia..."
+    value={productForm.stock}
+    onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+    required
+  />
 
-    </form>
-            </div>
+  {/* Input Deskripsi */}
+  <textarea
+    placeholder="Deskripsi Produk..."
+    value={productForm.description}
+    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+  ></textarea>
+
+  {/* Input URL Gambar */}
+  <input
+    type="text"
+    placeholder="URL Gambar..."
+    value={productForm.image_url}
+    onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
+    className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+  />
+
+  {/* Dropdown Kategori & Badge */}
+  <div className="grid grid-cols-2 gap-2">
+    <div>
+      <label className="block text-[10px] text-slate-400 mb-1">Kategori</label>
+      <select
+        value={productForm.category || 'Exclusive Hampers'}
+        onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+      >
+        <option value="Makanan & Sembako">Makanan & Sembako</option>
+        <option value="Exclusive Hampers">Exclusive Hampers</option>
+        <option value="Kombinasi Premium">Kombinasi Premium</option>
+        <option value="Corporate Gift">Corporate Gift</option>
+      </select>
+    </div>
+
+    <div>
+      <label className="block text-[10px] text-slate-400 mb-1">Badge Highlight</label>
+      <select
+        value={productForm.badge || ''}
+        onChange={(e) => setProductForm({ ...productForm, badge: e.target.value })}
+        className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+      >
+        <option value="">Tanpa Badge</option>
+        <option value="Paling Laris">🔥 Paling Laris</option>
+        <option value="Mewah">✨ Mewah</option>
+        <option value="Rekomendasi">👍 Rekomendasi</option>
+        <option value="Hemat">🏷️ Hemat</option>
+      </select>
+    </div>
+  </div>
+
+  {/* Tombol Simpan */}
+  <button
+    type="submit"
+    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition text-xs"
+  >
+    {editingProduct ? 'Update Produk' : 'Simpan Produk'}
+  </button>
+</form>
+</div>
 
             <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
               <table className="w-full text-left text-xs">
