@@ -117,6 +117,20 @@ export default function AdminDashboard() {
     }
   };
 
+// Tambahkan fungsi update stok di app/admin/page.js:
+const handleUpdateStock = async (productId, newStock) => {
+  const { error } = await supabase
+    .from('products')
+    .update({ stock: Number(newStock) })
+    .eq('id', productId);
+
+  if (error) {
+    alert(`Gagal memperbarui stok: ${error.message}`);
+  } else {
+    alert('Stok berhasil diperbarui!');
+  }
+};
+  
   // Logika Pencarian & Filter
   const filteredOrders = orders.filter((o) => {
     const matchesSearch =
