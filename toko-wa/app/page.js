@@ -149,41 +149,41 @@ export default function Home() {
                   }`}
                 >
                   <div>
-                    <div className="relative">
-                     <div className="relative overflow-hidden rounded-t-2xl">
-  {/* 1. Gambar Produk */}
-  <img
-    src={
-      product.image_url || 
-      product.image || 
-      'https://placehold.co/600x400/e2e8f0/475569?text=Tidak+Ada+Gambar'
-    }
-    alt={product.name}
-    className="h-48 w-full object-cover"
-    onError={(e) => {
-      e.target.onerror = null;
-      e.target.src = 'https://placehold.co/600x400/e2e8f0/475569?text=Gambar+Error';
-    }}
-  />
+                    <div className="relative overflow-hidden rounded-xl">
+                      {/* 1. Gambar Produk */}
+                      <img
+                        src={
+                          item.image_url || 
+                          item.image || 
+                          'https://placehold.co/600x400/e2e8f0/475569?text=Tidak+Ada+Gambar'
+                        }
+                        alt={item.name}
+                        className="h-48 w-full object-cover rounded-xl"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'https://placehold.co/600x400/e2e8f0/475569?text=Gambar+Error';
+                        }}
+                      />
 
-{/* Kategori */}
-{product.category && (
-  <span className="absolute top-3 left-3 rounded-full bg-black/60 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
-    {product.category}
-  </span>
-)}
+                      {/* Kategori */}
+                      {item.category && (
+                        <span className="absolute top-3 left-3 rounded-full bg-black/60 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+                          {item.category}
+                        </span>
+                      )}
 
-{/* Badge */}
-{product.badge && (
-  <span className={`absolute top-3 right-3 rounded-full px-3 py-1 text-[10px] font-extrabold text-white shadow-md ${
-    product.badge === 'Paling Laris' ? 'bg-amber-500' :
-    product.badge === 'Mewah' ? 'bg-orange-600' :
-    product.badge === 'Rekomendasi' ? 'bg-orange-500' :
-    'bg-emerald-600'
-  }`}>
-    {product.badge}
-  </span>
-)}
+                      {/* Badge */}
+                      {item.badge && (
+                        <span className={`absolute top-3 right-3 rounded-full px-3 py-1 text-[10px] font-extrabold text-white shadow-md ${
+                          item.badge === 'Paling Laris' ? 'bg-amber-500' :
+                          item.badge === 'Mewah' ? 'bg-orange-600' :
+                          item.badge === 'Rekomendasi' ? 'bg-orange-500' :
+                          'bg-emerald-600'
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="mt-4">
                       <div className="flex items-center justify-between">
@@ -236,7 +236,10 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-
+              );
+            })}
+          </div>
+        )}
 
         {/* Form Checkout */}
         {selectedParcel && (
@@ -312,7 +315,8 @@ export default function Home() {
               </button>
             </form>
           </section>
-      </div>
-    </main>
+        )}
+      </main>
+    </div>
   );
 }
