@@ -95,13 +95,25 @@ export default function AdminDashboard() {
     }
   };
 
-  // Update Cara Bayar (Handled with Supabase)
+  // Update Cara Bayar
   const handlePaymentMethodChange = async (id, newMethod) => {
     const { error } = await supabase.from('orders').update({ payment_method: newMethod }).eq('id', id);
     if (!error) {
       setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, payment_method: newMethod } : o)));
     } else {
       alert('Gagal memperbarui cara bayar!\n\nPastikan Anda sudah menjalankan SQL ALTER TABLE di Supabase untuk menambahkan kolom payment_method.\n\nError: ' + error.message);
+    }
+  };
+
+  // 🗑️ FITUR HAPUS PESANAN
+  const handleDeleteOrder = async (id) => {
+    if (confirm(`Apakah Anda yakin ingin menghapus Pesanan #${id}? Data yang dihapus tidak dapat dikembalikan.`)) {
+      const { error } = await supabase.from('orders').delete().eq('id', id);
+      if (!error) {
+        setOrders((prev) => prev.filter((o) => o.id !== id));
+      } else {
+        alert('Gagal menghapus pesanan: ' + error.message);
+      }
     }
   };
 
@@ -141,7 +153,7 @@ export default function AdminDashboard() {
       setTransForm({ type: 'pengeluaran', category: 'Operasional', amount: '', description: '' });
       fetchCashTransactions();
     } else {
-      alert('Gagal mencatat transaksi: ' + error.message + '\n\nPastikan tabel cash_transactions sudah dibuat di Supabase.');
+      alert('Gagal mencatat transaksi: ' + error.message + '\n\nPastikan tabel cash_transactions sudah dibuat dan tipe kolom "type" sudah diperluas.');
     }
   };
 
@@ -190,23 +202,19 @@ export default function AdminDashboard() {
   });
 
   // ===================================================
-  // PERHITUNGAN AKUNTANSI KEUANGAN LENGKAP
+  // PERHITUNGAN AKUNTANSI KEUANGAN
   // ===================================================
   const completedOrders = filteredOrders.filter((o) => o.status === 'lunas');
   const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
 
-  // Pemasukan dari Penjualan Lunas
   const orderSalesRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
   const pendingRevenue = pendingOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
 
-  // HPP Penjualan (COGS)
   const totalCOGS = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.6), 0);
 
-  // Pemasukan & Pengeluaran Kas Manual
   const manualIncomes = cashTransactions.filter((t) => t.type === 'pemasukan').reduce((sum, t) => sum + Number(t.amount || 0), 0);
   const manualExpenses = cashTransactions.filter((t) => t.type === 'pengeluaran').reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-  // Total Pendapatan & Pengeluaran
   const totalGrossRevenue = orderSalesRevenue + manualIncomes;
   const grossProfit = totalGrossRevenue - totalCOGS;
   const netProfit = grossProfit - manualExpenses;
@@ -335,7 +343,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Input Form Pemasukan & Pengeluaran */}
+            {/* Form Pemasukan/Pengeluaran */}
             <div className="grid gap-6 lg:grid-cols-3">
               <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -421,7 +429,7 @@ export default function AdminDashboard() {
                 </form>
               </div>
 
-              {/* Tabel Buku Kas Transaksi Manual */}
+              {/* Buku Kas */}
               <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                   <h2 className="text-sm font-bold text-white">📖 Buku Kas / Jurnal Pengeluaran & Pemasukan</h2>
@@ -462,7 +470,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 2: MANAJEMEN PESANAN, CARA BAYAR & CATATAN */}
+        {/* TAB 2: MANAJEMEN PESANAN (DENGAN FITUR HAPUS) */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             {/* Filter Bar */}
@@ -531,7 +539,7 @@ export default function AdminDashboard() {
                     <th className="p-4">Total</th>
                     <th className="p-4">Cara Bayar</th>
                     <th className="p-4">Status</th>
-                    <th className="p-4">Catatan (Notes)</th>
+                    <th className="p-4">Catatan</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -560,7 +568,7 @@ export default function AdminDashboard() {
                           Rp {Number(item.total_price).toLocaleString('id-ID')}
                         </td>
 
-                        {/* Dropdown Cara Bayar */}
+                        {/* Cara Bayar */}
                         <td className="p-4">
                           <select
                             value={item.payment_method || 'Transfer Bank'}
@@ -573,7 +581,7 @@ export default function AdminDashboard() {
                           </select>
                         </td>
 
-                        {/* Dropdown Status */}
+                        {/* Status */}
                         <td className="p-4">
                           <select
                             value={item.status}
@@ -587,7 +595,7 @@ export default function AdminDashboard() {
                           </select>
                         </td>
 
-                        {/* Catatan (Notes) */}
+                        {/* Catatan */}
                         <td className="p-4 max-w-xs">
                           {item.notes ? (
                             <div className="text-slate-300 bg-slate-950 p-2 rounded-xl border border-slate-800 text-[11px] truncate">
@@ -598,25 +606,37 @@ export default function AdminDashboard() {
                           )}
                         </td>
 
+                        {/* Tombol Aksi (DENGAN TOMBOL HAPUS PESANAN) */}
                         <td className="p-4 text-center">
-                          <div className="flex justify-center gap-2">
+                          <div className="flex justify-center items-center gap-1.5">
                             <button
                               onClick={() => handleOpenNoteModal(item)}
+                              title="Tambah / Edit Catatan"
                               className="rounded-xl bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-amber-400 hover:bg-slate-700"
                             >
                               📝 Notes
                             </button>
                             <button
                               onClick={() => sendWhatsApp(item)}
+                              title="Kirim Pesan WA"
                               className="rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs text-white font-bold hover:bg-emerald-500"
                             >
                               📱 WA
                             </button>
                             <button
                               onClick={() => setInvoiceOrder(item)}
+                              title="Cetak Invoice"
                               className="rounded-xl bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700"
                             >
                               🧾 Invoice
+                            </button>
+                            {/* 🔴 TOMBOL HAPUS PESANAN */}
+                            <button
+                              onClick={() => handleDeleteOrder(item.id)}
+                              title="Hapus Pesanan"
+                              className="rounded-xl bg-rose-950/60 border border-rose-800/80 px-2.5 py-1.5 text-xs font-bold text-rose-400 hover:bg-rose-900"
+                            >
+                              🗑️ Hapus
                             </button>
                           </div>
                         </td>
@@ -629,7 +649,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 3: MANAJEMEN STOK & PRODUK */}
+        {/* TAB 3: MANAJEMEN PRODUK */}
         {activeTab === 'products' && (
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
