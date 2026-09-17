@@ -9,19 +9,22 @@ export default function AdminDashboard() {
   const [adminPassword, setAdminPassword] = useState('admin123');
   const [newPassword, setNewPassword] = useState('');
 
-  // Active Tab: 'orders' | 'products' | 'finance' | 'settings'
+  // Tab Aktif: 'orders' | 'finance' | 'products' | 'settings'
   const [activeTab, setActiveTab] = useState('orders');
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter & Search
+  // Filter & Pencarian
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Modals / Form State
+  // Biaya Operasional / Pengeluaran Lain (Catatan Keuangan)
+  const [operationalCost, setOperationalCost] = useState(0);
+
+  // Modal / Form State
   const [editingOrder, setEditingOrder] = useState(null);
   const [noteInput, setNoteInput] = useState('');
   const [invoiceOrder, setInvoiceOrder] = useState(null);
@@ -33,6 +36,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     const savedPass = localStorage.getItem('admin_password');
     if (savedPass) setAdminPassword(savedPass);
+
+    const savedOpCost = localStorage.getItem('operational_cost');
+    if (savedOpCost) setOperationalCost(Number(savedOpCost));
   }, []);
 
   const handleLogin = (e) => {
@@ -72,7 +78,7 @@ export default function AdminDashboard() {
     let phone = item.customer_phone.replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
 
-    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di Parcel Store!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Status: *${item.status.toUpperCase()}*\n\nAnda dapat melacak status pesanan secara mandiri melalui link berikut:\nhttps://website-anda.com/track?id=${item.id}\n\nAda yang bisa kami bantu kembali? 😊`;
+    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di Parcel Store!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${item.status.toUpperCase()}*\n\nAda yang bisa kami bantu kembali? 😊`;
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
@@ -83,12 +89,25 @@ export default function AdminDashboard() {
     fetchOrders();
   };
 
+  // Update Cara Bayar (Transfer / QRIS / Tunai)
+  const handlePaymentMethodChange = async (id, newMethod) => {
+    await supabase.from('orders').update({ payment_method: newMethod }).eq('id', id);
+    fetchOrders();
+  };
+
   // Update Catatan Khusus
   const handleSaveNote = async () => {
     if (!editingOrder) return;
     await supabase.from('orders').update({ notes: noteInput }).eq('id', editingOrder.id);
     setEditingOrder(null);
     fetchOrders();
+  };
+
+  // Update Biaya Operasional Catatan Keuangan
+  const handleSaveOperationalCost = (val) => {
+    const cost = Number(val) || 0;
+    setOperationalCost(cost);
+    localStorage.setItem('operational_cost', cost.toString());
   };
 
   // CRUD Produk
@@ -129,61 +148,39 @@ export default function AdminDashboard() {
   });
 
   // ==========================================
-  // KALKULASI KEUANGAN & ANALITIK TINGKAT LANJUT
+  // KALKULASI KEUANGAN & LABA RUGI (PROFIT & LOSS)
   // ==========================================
   const completedOrders = filteredOrders.filter((o) => o.status === 'lunas');
   const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
 
   const totalRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
   const pendingRevenue = pendingOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
-  const avgOrderValue = completedOrders.length > 0 ? Math.round(totalRevenue / completedOrders.length) : 0;
 
-  // HPP / Modal & Laba Bersih (Estimasi 65% HPP jika cost_price tidak ditentukan)
-  const totalCost = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.65), 0);
-  const netProfit = totalRevenue - totalCost;
-  const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+  // HPP (Harga Pokok Penjualan) / Modal Bahan Baku
+  // Asumsi default HPP 60% dari total harga jika modal produk tidak diisi
+  const totalHPP = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.60), 0);
 
-  // Breakdown Metode Pembayaran
-  const paymentMethods = completedOrders.reduce((acc, order) => {
-    const method = order.payment_method || 'Transfer Bank / QRIS';
+  // Laba Kotor (Gross Profit) = Revenue - HPP
+  const grossProfit = totalRevenue - totalHPP;
+
+  // Laba Bersih (Net Profit) = Laba Kotor - Beban Operasional
+  const netProfit = grossProfit - operationalCost;
+
+  // Percentage Margin Profit
+  const netMarginPercent = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+
+  // Breakdown Metode Pembayaran (Transfer / QRIS / Tunai)
+  const paymentBreakdown = completedOrders.reduce((acc, order) => {
+    const method = order.payment_method || 'Transfer Bank';
     acc[method] = (acc[method] || 0) + Number(order.total_price || 0);
     return acc;
   }, {});
 
-  // Top Items / Products Analytics
-  const itemAnalytics = completedOrders.reduce((acc, order) => {
-    const itemName = order.items || 'Parcel Custom';
-    if (!acc[itemName]) {
-      acc[itemName] = { count: 0, revenue: 0 };
-    }
-    acc[itemName].count += 1;
-    acc[itemName].revenue += Number(order.total_price || 0);
-    return acc;
-  }, {});
-
-  const sortedTopItems = Object.entries(itemAnalytics).sort((a, b) => b[1].revenue - a[1].revenue);
-
-  // Rekapitulasi Harian
-  const dailySummary = filteredOrders.reduce((acc, order) => {
-    const date = order.created_at ? order.created_at.split('T')[0] : 'Lainnya';
-    if (!acc[date]) {
-      acc[date] = { count: 0, lunas: 0, pending: 0, total: 0 };
-    }
-    acc[date].count += 1;
-    if (order.status === 'lunas') {
-      acc[date].lunas += Number(order.total_price || 0);
-    } else {
-      acc[date].pending += Number(order.total_price || 0);
-    }
-    acc[date].total += Number(order.total_price || 0);
-    return acc;
-  }, {});
-
-  // Export Keuangan Ke CSV
+  // Export Data Ke CSV
   const handleExportCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data untuk diekspor!');
 
-    let csvContent = 'data:text/csv;charset=utf-8,ID,Tanggal,Nama Pelanggan,No WA,Items,Total Harga,Status,Metode Pembayaran\n';
+    let csvContent = 'data:text/csv;charset=utf-8,ID,Tanggal,Nama Pelanggan,No WA,Items,Total Harga,Cara Bayar,Status\n';
     filteredOrders.forEach((o) => {
       const row = [
         o.id,
@@ -192,8 +189,8 @@ export default function AdminDashboard() {
         `"${o.customer_phone || ''}"`,
         `"${o.items || ''}"`,
         o.total_price || 0,
-        o.status,
-        `"${o.payment_method || 'QRIS/Transfer'}"`
+        `"${o.payment_method || 'Transfer Bank'}"`,
+        o.status
       ].join(',');
       csvContent += row + '\n';
     });
@@ -201,7 +198,7 @@ export default function AdminDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Laporan_Keuangan_Parcel_${startDate || 'all'}_s.d_${endDate || 'all'}.csv`);
+    link.setAttribute('download', `Laporan_Keuangan_Parcel_${startDate || 'Awal'}_sd_${endDate || 'Akhir'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -234,7 +231,7 @@ export default function AdminDashboard() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Dashboard Admin Parcel</h1>
-            <p className="text-xs text-slate-500">Kelola pesanan, stok produk, analitik keuangan, dan layanan pelanggan.</p>
+            <p className="text-xs text-slate-500">Kelola pesanan, pencatatan keuangan, dan stok produk.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -243,7 +240,7 @@ export default function AdminDashboard() {
                 activeTab === 'orders' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
               }`}
             >
-              📦 Pesanan
+              📦 Pesanan & Cara Bayar
             </button>
             <button
               onClick={() => setActiveTab('finance')}
@@ -251,7 +248,7 @@ export default function AdminDashboard() {
                 activeTab === 'finance' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
               }`}
             >
-              📊 Keuangan & Analitik
+              📈 Catatan Keuangan & HPP
             </button>
             <button
               onClick={() => setActiveTab('products')}
@@ -259,7 +256,7 @@ export default function AdminDashboard() {
                 activeTab === 'products' ? 'bg-emerald-700 text-white' : 'bg-white border text-slate-700'
               }`}
             >
-              🎁 Stok Produk
+              🎁 Stok & Modal Produk
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -275,7 +272,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TAB 1: MANAJEMEN PESANAN */}
+        {/* TAB 1: TABEL MANAJEMEN PESANAN */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             {/* Filter Bar */}
@@ -333,7 +330,7 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Tabel Pesanan */}
+            {/* Tabel Pesanan Lengkap dengan CARA BAYAR */}
             <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b">
@@ -342,83 +339,93 @@ export default function AdminDashboard() {
                     <th className="p-4">Pelanggan</th>
                     <th className="p-4">Detail Items</th>
                     <th className="p-4">Total</th>
-                    <th className="p-4">Catatan</th>
+                    <th className="p-4">Cara Bayar</th>
                     <th className="p-4">Status</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredOrders.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="p-4 font-mono font-bold">
-                        #{item.id}
-                        <div className="text-[10px] font-normal text-slate-400">
-                          {item.created_at ? item.created_at.split('T')[0] : '-'}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-semibold text-slate-900">{item.customer_name}</div>
-                        <div className="text-xs text-slate-400">{item.customer_phone}</div>
-                      </td>
-                      <td className="p-4 text-xs">{item.items}</td>
-                      <td className="p-4 font-bold">Rp {Number(item.total_price).toLocaleString('id-ID')}</td>
-                      <td className="p-4 text-xs italic text-slate-500">
-                        {item.notes || '-'}
-                        <button
-                          onClick={() => {
-                            setEditingOrder(item);
-                            setNoteInput(item.notes || '');
-                          }}
-                          className="ml-2 text-[10px] text-emerald-700 underline font-bold"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                      <td className="p-4">
-                        <select
-                          value={item.status}
-                          onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                          className={`rounded-lg px-2 py-1 text-xs font-bold ${
-                            item.status === 'lunas' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          <option value="pending">PENDING</option>
-                          <option value="lunas">LUNAS</option>
-                        </select>
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="flex justify-center gap-1.5">
-                          <button
-                            onClick={() => sendWhatsApp(item)}
-                            className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs text-white font-bold hover:bg-emerald-700"
-                            title="Kirim Pesan WA"
-                          >
-                            📱 WA
-                          </button>
-                          <button
-                            onClick={() => setInvoiceOrder(item)}
-                            className="rounded-lg bg-purple-50 px-2.5 py-1.5 text-xs font-bold text-purple-700 border hover:bg-purple-100"
-                          >
-                            🧾 Invoice
-                          </button>
-                        </div>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 italic">
+                        Tidak ada transaksi pesanan ditemukan.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredOrders.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="p-4 font-mono font-bold">
+                          #{item.id}
+                          <div className="text-[10px] font-normal text-slate-400">
+                            {item.created_at ? item.created_at.split('T')[0] : '-'}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-semibold text-slate-900">{item.customer_name}</div>
+                          <div className="text-xs text-slate-400">{item.customer_phone}</div>
+                        </td>
+                        <td className="p-4 text-xs">{item.items}</td>
+                        <td className="p-4 font-bold text-slate-900">
+                          Rp {Number(item.total_price).toLocaleString('id-ID')}
+                        </td>
+                        {/* FITUR CARA BAYAR (TF, QRIS, TUNAI) */}
+                        <td className="p-4">
+                          <select
+                            value={item.payment_method || 'Transfer Bank'}
+                            onChange={(e) => handlePaymentMethodChange(item.id, e.target.value)}
+                            className="rounded-lg border bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700"
+                          >
+                            <option value="Transfer Bank">🏦 Transfer Bank</option>
+                            <option value="QRIS">📱 QRIS</option>
+                            <option value="Tunai / Cash">💵 Tunai / Cash</option>
+                          </select>
+                        </td>
+                        <td className="p-4">
+                          <select
+                            value={item.status}
+                            onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                              item.status === 'lunas' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            <option value="pending">PENDING</option>
+                            <option value="lunas">LUNAS</option>
+                          </select>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex justify-center gap-1.5">
+                            <button
+                              onClick={() => sendWhatsApp(item)}
+                              className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs text-white font-bold hover:bg-emerald-700"
+                              title="Kirim Pesan WA"
+                            >
+                              📱 WA
+                            </button>
+                            <button
+                              onClick={() => setInvoiceOrder(item)}
+                              className="rounded-lg bg-purple-50 px-2.5 py-1.5 text-xs font-bold text-purple-700 border hover:bg-purple-100"
+                            >
+                              🧾 Invoice
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* TAB 2: KEUANGAN & ANALITIK TINGKAT LANJUT */}
+        {/* TAB 2: CATATAN KEUANGAN DETAIL (HPP, OPERASIONAL, NET PROFIT) */}
         {activeTab === 'finance' && (
           <div className="space-y-6">
-            {/* Filter Periode & Export Button */}
+            {/* Header Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border bg-white p-4">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Analitik Keuangan & Penjualan</h2>
-                <p className="text-xs text-slate-500">Data berikut diperbarui sesuai rentang tanggal terpilih.</p>
+                <h2 className="text-base font-bold text-slate-900">Catatan Keuangan & Laba Rugi Usaha</h2>
+                <p className="text-xs text-slate-500">Perhitungan real-time HPP, Beban Operasional, dan Keuntungan Bersih.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -438,124 +445,127 @@ export default function AdminDashboard() {
                   onClick={handleExportCSV}
                   className="rounded-xl bg-emerald-800 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-900"
                 >
-                  📥 Export CSV / Excel
+                  📥 Export CSV
                 </button>
               </div>
             </div>
 
-            {/* Top Metric Cards */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
-                <p className="text-xs font-bold uppercase text-slate-400">Total Omset (Lunas)</p>
-                <p className="text-2xl font-black text-emerald-700">Rp {totalRevenue.toLocaleString('id-ID')}</p>
-                <p className="text-[10px] text-slate-400">{completedOrders.length} transaksi terbayar</p>
-              </div>
+            {/* Rincian Laporan Keuangan (Laba / Rugi) */}
+            <div className="grid gap-6 md:grid-cols-3">
+              {/* Ringkasan Laba Bersih Utama */}
+              <div className="md:col-span-2 rounded-2xl border bg-white p-6 shadow-sm space-y-5">
+                <h3 className="font-bold text-slate-900 border-b pb-3 text-sm">📊 Laporan Keuangan Ringkas (Pendapatan Lunas)</h3>
 
-              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
-                <p className="text-xs font-bold uppercase text-slate-400">Keuntungan Bersih (Profit)</p>
-                <p className="text-2xl font-black text-blue-700">Rp {netProfit.toLocaleString('id-ID')}</p>
-                <p className="text-[10px] text-slate-400">Margin Profit: <strong className="text-blue-800">{profitMargin}%</strong></p>
-              </div>
+                <div className="space-y-3 text-sm">
+                  {/* Total Pendapatan Kotor */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600 font-medium">Total Pendapatan (Omset Kotor)</span>
+                    <span className="font-bold text-slate-900">Rp {totalRevenue.toLocaleString('id-ID')}</span>
+                  </div>
 
-              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
-                <p className="text-xs font-bold uppercase text-slate-400">Piutang Pending</p>
-                <p className="text-2xl font-black text-amber-600">Rp {pendingRevenue.toLocaleString('id-ID')}</p>
-                <p className="text-[10px] text-slate-400">{pendingOrders.length} pesanan menanti pembayaran</p>
-              </div>
+                  {/* Beban HPP */}
+                  <div className="flex justify-between items-center text-rose-600">
+                    <span className="font-medium">(-) HPP / Modal Bahan Baku Parcel</span>
+                    <span className="font-bold">- Rp {totalHPP.toLocaleString('id-ID')}</span>
+                  </div>
 
-              <div className="rounded-2xl border bg-white p-5 shadow-sm space-y-1">
-                <p className="text-xs font-bold uppercase text-slate-400">Rata-rata Order (AOV)</p>
-                <p className="text-2xl font-black text-indigo-700">Rp {avgOrderValue.toLocaleString('id-ID')}</p>
-                <p className="text-[10px] text-slate-400">Nilai rata-rata per transaksi</p>
-              </div>
-            </div>
+                  <hr />
 
-            {/* Grid Analitik 2 Kolom: Produk Terlaris & Metode Pembayaran */}
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Box 1: Produk Terlaris */}
-              <div className="rounded-2xl border bg-white p-5 space-y-4">
-                <h3 className="font-bold text-slate-900 text-sm flex items-center justify-between">
-                  <span>🔥 Produk / Parcel Terlaris</span>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Berdasarkan Omset</span>
-                </h3>
-                <div className="space-y-3">
-                  {sortedTopItems.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">Belum ada data penjualan lunas.</p>
-                  ) : (
-                    sortedTopItems.slice(0, 5).map(([name, data], idx) => (
-                      <div key={idx} className="flex items-center justify-between border-b pb-2 text-xs">
-                        <div>
-                          <p className="font-bold text-slate-800">{name}</p>
-                          <p className="text-[10px] text-slate-400">{data.count}x Dipesan</p>
-                        </div>
-                        <p className="font-black text-emerald-700">Rp {data.revenue.toLocaleString('id-ID')}</p>
-                      </div>
-                    ))
-                  )}
+                  {/* Laba Kotor */}
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span>(=) Laba Kotor (Gross Profit)</span>
+                    <span>Rp {grossProfit.toLocaleString('id-ID')}</span>
+                  </div>
+
+                  {/* Beban Operasional Input */}
+                  <div className="flex justify-between items-center text-rose-600 bg-rose-50 p-3 rounded-xl">
+                    <div>
+                      <span className="font-bold block">(-) Beban Operasional & Pengemasan</span>
+                      <span className="text-[10px] text-rose-500">Kotak, pita, kartu ucapan, listrik, kurir, dll.</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold">Rp</span>
+                      <input
+                        type="number"
+                        value={operationalCost}
+                        onChange={(e) => handleSaveOperationalCost(e.target.value)}
+                        className="w-28 rounded-lg border p-1 text-right text-xs font-bold text-slate-900"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
+                  <hr className="border-slate-300" />
+
+                  {/* Laba Bersih Akhir */}
+                  <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-xl">
+                    <div>
+                      <span className="text-base font-black text-emerald-900 block">(=) LABA BERSIH (NET PROFIT)</span>
+                      <span className="text-xs text-emerald-700 font-semibold">Margin Bersih: {netMarginPercent}%</span>
+                    </div>
+                    <span className="text-2xl font-black text-emerald-700">
+                      Rp {netProfit.toLocaleString('id-ID')}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Box 2: Metode Pembayaran */}
-              <div className="rounded-2xl border bg-white p-5 space-y-4">
-                <h3 className="font-bold text-slate-900 text-sm flex items-center justify-between">
-                  <span>💳 Metode Pembayaran Digunakan</span>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Total Masuk</span>
-                </h3>
-                <div className="space-y-3">
-                  {Object.keys(paymentMethods).length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">Belum ada pembayaran lunas.</p>
-                  ) : (
-                    Object.entries(paymentMethods).map(([method, total], idx) => {
-                      const percent = totalRevenue > 0 ? ((total / totalRevenue) * 100).toFixed(0) : 0;
-                      return (
-                        <div key={idx} className="space-y-1">
-                          <div className="flex justify-between text-xs font-semibold">
-                            <span>{method}</span>
-                            <span>Rp {total.toLocaleString('id-ID')} ({percent}%)</span>
-                          </div>
-                          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${percent}%` }}></div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
+              {/* Sidebar Pendapatan Berdasarkan Cara Bayar */}
+              <div className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
+                <h3 className="font-bold text-slate-900 border-b pb-3 text-sm">💳 Kas Masuk per Cara Bayar</h3>
 
-            {/* Table Breakdown Rekapitulasi Harian */}
-            <div className="rounded-2xl border bg-white p-5 space-y-4 shadow-sm">
-              <h3 className="font-bold text-slate-900 text-sm">📅 Rekap Penjualan Harian</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 uppercase text-slate-400 border-b">
-                    <tr>
-                      <th className="p-3">Tanggal</th>
-                      <th className="p-3">Total Pesanan</th>
-                      <th className="p-3">Pendapatan Lunas</th>
-                      <th className="p-3">Potensi Pending</th>
-                      <th className="p-3 text-right">Total Transaksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {Object.keys(dailySummary).length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="p-4 text-center text-slate-400">Tidak ada data untuk periode ini.</td>
-                      </tr>
-                    ) : (
-                      Object.entries(dailySummary).map(([date, stat]) => (
-                        <tr key={date} className="hover:bg-slate-50">
-                          <td className="p-3 font-mono font-bold text-slate-700">{date}</td>
-                          <td className="p-3">{stat.count} Pesanan</td>
-                          <td className="p-3 font-bold text-emerald-700">Rp {stat.lunas.toLocaleString('id-ID')}</td>
-                          <td className="p-3 text-amber-600 font-semibold">Rp {stat.pending.toLocaleString('id-ID')}</td>
-                          <td className="p-3 text-right font-black text-slate-900">Rp {stat.total.toLocaleString('id-ID')}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span>🏦 Transfer Bank</span>
+                      <span>Rp {(paymentBreakdown['Transfer Bank'] || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600"
+                        style={{
+                          width: `${totalRevenue > 0 ? ((paymentBreakdown['Transfer Bank'] || 0) / totalRevenue) * 100 : 0}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span>📱 QRIS</span>
+                      <span>Rp {(paymentBreakdown['QRIS'] || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full bg-purple-600"
+                        style={{
+                          width: `${totalRevenue > 0 ? ((paymentBreakdown['QRIS'] || 0) / totalRevenue) * 100 : 0}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span>💵 Tunai / Cash</span>
+                      <span>Rp {(paymentBreakdown['Tunai / Cash'] || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-600"
+                        style={{
+                          width: `${totalRevenue > 0 ? ((paymentBreakdown['Tunai / Cash'] || 0) / totalRevenue) * 100 : 0}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 border-t pt-4 space-y-2">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Piutang Belum Terbayar</p>
+                  <p className="text-lg font-black text-amber-600">Rp {pendingRevenue.toLocaleString('id-ID')}</p>
+                  <p className="text-[10px] text-slate-400">{pendingOrders.length} pesanan dengan status PENDING.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -580,7 +590,7 @@ export default function AdminDashboard() {
                 />
                 <input
                   type="number"
-                  placeholder="Harga Jual (Rp)..."
+                  placeholder="Harga Jual Pelanggan (Rp)..."
                   value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
                   className="w-full rounded-xl border p-2 text-xs"
@@ -588,7 +598,7 @@ export default function AdminDashboard() {
                 />
                 <input
                   type="number"
-                  placeholder="Harga Modal / HPP (Rp)..."
+                  placeholder="Harga Modal / HPP Produk (Rp)..."
                   value={productForm.cost_price}
                   onChange={(e) => setProductForm({ ...productForm, cost_price: e.target.value })}
                   className="w-full rounded-xl border p-2 text-xs"
@@ -642,7 +652,7 @@ export default function AdminDashboard() {
                   <tr>
                     <th className="p-4">Produk</th>
                     <th className="p-4">Harga Jual</th>
-                    <th className="p-4">Harga Modal</th>
+                    <th className="p-4">Harga Modal (HPP)</th>
                     <th className="p-4">Stok</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
@@ -701,29 +711,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Modal Edit Note */}
-        {editingOrder && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 space-y-4">
-              <h3 className="font-bold">Edit Catatan Pesanan #{editingOrder.id}</h3>
-              <textarea
-                value={noteInput}
-                onChange={(e) => setNoteInput(e.target.value)}
-                className="w-full rounded-xl border p-3 text-xs"
-                rows={4}
-              />
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setEditingOrder(null)} className="rounded-xl border px-4 py-2 text-xs font-bold">
-                  Batal
-                </button>
-                <button onClick={handleSaveNote} className="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white">
-                  Simpan Catatan
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Modal Printable Invoice */}
         {invoiceOrder && (
           <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4 z-50">
@@ -737,6 +724,7 @@ export default function AdminDashboard() {
                 <p><strong>No. WhatsApp:</strong> {invoiceOrder.customer_phone}</p>
                 <p><strong>Rincian Pesanan:</strong> {invoiceOrder.items}</p>
                 <p><strong>Total Pembayaran:</strong> Rp {Number(invoiceOrder.total_price).toLocaleString('id-ID')}</p>
+                <p><strong>Cara Bayar:</strong> {invoiceOrder.payment_method || 'Transfer Bank'}</p>
                 <p><strong>Status:</strong> {invoiceOrder.status.toUpperCase()}</p>
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t">
