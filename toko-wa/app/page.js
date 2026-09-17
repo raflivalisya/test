@@ -166,25 +166,24 @@ export default function Home() {
     }}
   />
 
-  {/* 2. Label Kategori (Pojok Kiri Atas) */}
-  {product.category && (
-    <span className="absolute top-3 left-3 rounded-full bg-black/60 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
-      {product.category}
-    </span>
-  )}
+{/* Kategori */}
+{product.category && (
+  <span className="absolute top-3 left-3 rounded-full bg-black/60 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+    {product.category}
+  </span>
+)}
 
-  {/* 3. Badge Highlight (Pojok Kanan Atas - Paling Laris / Mewah / dll) */}
-  {product.badge && (
-    <span className={`absolute top-3 right-3 rounded-full px-3 py-1 text-[10px] font-extrabold text-white shadow-md ${
-      product.badge === 'Paling Laris' ? 'bg-amber-500' :
-      product.badge === 'Mewah' ? 'bg-orange-600' :
-      product.badge === 'Rekomendasi' ? 'bg-orange-500' :
-      'bg-emerald-600'
-    }`}>
-      {product.badge}
-    </span>
-  )}
-</div>
+{/* Badge */}
+{product.badge && (
+  <span className={`absolute top-3 right-3 rounded-full px-3 py-1 text-[10px] font-extrabold text-white shadow-md ${
+    product.badge === 'Paling Laris' ? 'bg-amber-500' :
+    product.badge === 'Mewah' ? 'bg-orange-600' :
+    product.badge === 'Rekomendasi' ? 'bg-orange-500' :
+    'bg-emerald-600'
+  }`}>
+    {product.badge}
+  </span>
+)}
 
                     <div className="mt-4">
                       <div className="flex items-center justify-between">
