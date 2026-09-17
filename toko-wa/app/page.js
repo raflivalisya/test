@@ -150,23 +150,41 @@ export default function Home() {
                 >
                   <div>
                     <div className="relative">
-                      <img src={item.image} alt={item.name} className="h-52 w-full rounded-xl object-cover" />
-                      
-                      {/* Badge Custom or Sold Out */}
-                      {isSoldOut ? (
-                        <span className="absolute right-3 top-3 rounded-full bg-rose-600 px-3 py-1 text-xs font-extrabold text-white shadow">
-                          🚫 STOK HABIS
-                        </span>
-                      ) : (
-                        <span className="absolute right-3 top-3 rounded-full bg-amber-500 px-3 py-1 text-xs font-extrabold text-white shadow">
-                          {item.badge}
-                        </span>
-                      )}
+                     <div className="relative overflow-hidden rounded-t-2xl">
+  {/* 1. Gambar Produk */}
+  <img
+    src={
+      product.image_url || 
+      product.image || 
+      'https://placehold.co/600x400/e2e8f0/475569?text=Tidak+Ada+Gambar'
+    }
+    alt={product.name}
+    className="h-48 w-full object-cover"
+    onError={(e) => {
+      e.target.onerror = null;
+      e.target.src = 'https://placehold.co/600x400/e2e8f0/475569?text=Gambar+Error';
+    }}
+  />
 
-                      <span className="absolute left-3 top-3 rounded-full bg-slate-900/70 backdrop-blur-sm px-3 py-1 text-xs font-medium text-white">
-                        {item.category}
-                      </span>
-                    </div>
+  {/* 2. Label Kategori (Pojok Kiri Atas) */}
+  {product.category && (
+    <span className="absolute top-3 left-3 rounded-full bg-black/60 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+      {product.category}
+    </span>
+  )}
+
+  {/* 3. Badge Highlight (Pojok Kanan Atas - Paling Laris / Mewah / dll) */}
+  {product.badge && (
+    <span className={`absolute top-3 right-3 rounded-full px-3 py-1 text-[10px] font-extrabold text-white shadow-md ${
+      product.badge === 'Paling Laris' ? 'bg-amber-500' :
+      product.badge === 'Mewah' ? 'bg-orange-600' :
+      product.badge === 'Rekomendasi' ? 'bg-orange-500' :
+      'bg-emerald-600'
+    }`}>
+      {product.badge}
+    </span>
+  )}
+</div>
 
                     <div className="mt-4">
                       <div className="flex items-center justify-between">
