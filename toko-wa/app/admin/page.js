@@ -165,16 +165,42 @@ export default function AdminDashboard() {
   };
 
   // CRUD Produk
+// CRUD Produk (Sudah Diperbaiki)
   const handleSaveProduct = async (e) => {
     e.preventDefault();
+
+    // Buat payload data yang aman
+    const payload = {
+      name: productForm.name,
+      price: Number(productForm.price),
+      cost_price: productForm.cost_price ? Number(productForm.cost_price) : 0,
+      stock: Number(productForm.stock),
+      description: productForm.description || '',
+      image_url: productForm.image_url || ''
+    };
+
+    let errorMsg = null;
+
     if (editingProduct) {
-      await supabase.from('products').update(productForm).eq('id', editingProduct.id);
+      const { error } = await supabase.from('products').update(payload).eq('id', editingProduct.id);
+      errorMsg = error;
     } else {
-      await supabase.from('products').insert([productForm]);
+      const { error } = await supabase.from('products').insert([payload]);
+      errorMsg = error;
     }
-    setProductForm({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
-    setEditingProduct(null);
-    fetchProducts();
+
+    if (errorMsg) {
+      alert(
+        'Gagal menyimpan produk!\n\n' +
+        'Penyebab umum: Kolom "cost_price" belum dibuat di tabel "products" Supabase.\n\n' +
+        'Detail Error: ' + errorMsg.message
+      );
+    } else {
+      alert(editingProduct ? 'Produk berhasil diperbarui!' : 'Produk berhasil ditambahkan!');
+      setProductForm({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
+      setEditingProduct(null);
+      fetchProducts();
+    }
   };
 
   const handleDeleteProduct = async (id) => {
