@@ -313,8 +313,10 @@ export default function Home() {
               </button>
             </form>
           </section>
-        )}
-      </main>
+// 🟢 KODE YANG BENAR
+        );
+      })}
     </div>
-  );
+  </main>
+);
 }
