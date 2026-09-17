@@ -7,12 +7,12 @@ export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [adminPassword, setAdminPassword] = useState('admin123');
-  const [newPassword, setNewPassword] = useState('');
 
-  // Active Tab: 'orders' | 'finance' | 'products' | 'settings'
+  // Active Tab: 'orders' | 'finance' | 'products'
   const [activeTab, setActiveTab] = useState('finance');
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [cashTransactions, setCashTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Filter & Search
@@ -21,35 +21,28 @@ export default function AdminDashboard() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Rincian Beban Operasional (OPEX) Untuk Keuangan Profesional
-  const [opex, setOpex] = useState({
-    packaging: 0,
-    marketing: 0,
-    operational: 0,
-    shipping: 0
+  // Form Input Pemasukan / Pengeluaran Manual
+  const [transForm, setTransForm] = useState({
+    type: 'pengeluaran', // 'pemasukan' | 'pengeluaran'
+    category: 'Operasional',
+    amount: '',
+    description: ''
   });
 
-  // State Modals / Form
-  const [editingOrder, setEditingOrder] = useState(null);
-  const [noteInput, setNoteInput] = useState('');
+  // State Modal Catatan (Notes) Pesanan
+  const [editingNoteOrder, setEditingNoteOrder] = useState(null);
+  const [noteText, setNoteText] = useState('');
+
+  // Invoice Modal
   const [invoiceOrder, setInvoiceOrder] = useState(null);
 
-  // Form Tambah / Edit Produk
+  // Form Produk
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({ name: '', price: '', cost_price: '', stock: '', description: '', image_url: '' });
 
   useEffect(() => {
     const savedPass = localStorage.getItem('admin_password');
     if (savedPass) setAdminPassword(savedPass);
-
-    const savedOpex = localStorage.getItem('financial_opex');
-    if (savedOpex) {
-      try {
-        setOpex(JSON.parse(savedOpex));
-      } catch (e) {
-        console.error(e);
-      }
-    }
   }, []);
 
   const handleLogin = (e) => {
@@ -58,20 +51,13 @@ export default function AdminDashboard() {
       setIsAuthenticated(true);
       fetchOrders();
       fetchProducts();
+      fetchCashTransactions();
     } else {
       alert('Password salah!');
     }
   };
 
-  const handleUpdatePassword = (e) => {
-    e.preventDefault();
-    if (!newPassword) return;
-    localStorage.setItem('admin_password', newPassword);
-    setAdminPassword(newPassword);
-    setNewPassword('');
-    alert('Password berhasil diperbarui!');
-  };
-
+  // Fetch Data dari Supabase
   const fetchOrders = async () => {
     setLoading(true);
     const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
@@ -84,17 +70,22 @@ export default function AdminDashboard() {
     if (data) setProducts(data);
   };
 
-  // WhatsApp Direct Link
+  const fetchCashTransactions = async () => {
+    const { data, error } = await supabase.from('cash_transactions').select('*').order('created_at', { ascending: false });
+    if (!error && data) setCashTransactions(data);
+  };
+
+  // WhatsApp Direct
   const sendWhatsApp = (item) => {
     let phone = item.customer_phone.replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
 
-    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di Parcel Store!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${item.status.toUpperCase()}*\n\nAda yang bisa kami bantu? 😊`;
+    const message = `Halo Kak *${item.customer_name}*,\n\nTerima kasih telah memesan di toko kami!\n\n📌 *Detail Pesanan #${item.id}*:\n- Items: ${item.items}\n- Total: Rp ${Number(item.total_price).toLocaleString('id-ID')}\n- Metode Bayar: *${item.payment_method || 'Transfer Bank'}*\n- Status: *${item.status.toUpperCase()}*${item.notes ? `\n- Catatan: ${item.notes}` : ''}\n\nAda yang bisa kami bantu? 😊`;
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  // Update Status Pesanan ke Supabase
+  // Update Status Pesanan
   const handleStatusChange = async (id, newStatus) => {
     const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', id);
     if (!error) {
@@ -104,29 +95,61 @@ export default function AdminDashboard() {
     }
   };
 
-  // FIX: PERBAIKAN CARA BAYAR (UPDATES SUPABASE & STATE INTERAKTIF)
+  // Update Cara Bayar (Handled with Supabase)
   const handlePaymentMethodChange = async (id, newMethod) => {
     const { error } = await supabase.from('orders').update({ payment_method: newMethod }).eq('id', id);
     if (!error) {
       setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, payment_method: newMethod } : o)));
     } else {
-      alert('Gagal memperbarui cara bayar: ' + error.message);
+      alert('Gagal memperbarui cara bayar!\n\nPastikan Anda sudah menjalankan SQL ALTER TABLE di Supabase untuk menambahkan kolom payment_method.\n\nError: ' + error.message);
     }
   };
 
-  // Update Catatan
-  const handleSaveNote = async () => {
-    if (!editingOrder) return;
-    await supabase.from('orders').update({ notes: noteInput }).eq('id', editingOrder.id);
-    setEditingOrder(null);
-    fetchOrders();
+  // Save Note Pesanan
+  const handleOpenNoteModal = (order) => {
+    setEditingNoteOrder(order);
+    setNoteText(order.notes || '');
   };
 
-  // Update OPEX Keuangan
-  const handleOpexChange = (key, val) => {
-    const newOpex = { ...opex, [key]: Number(val) || 0 };
-    setOpex(newOpex);
-    localStorage.setItem('financial_opex', JSON.stringify(newOpex));
+  const handleSaveNote = async () => {
+    if (!editingNoteOrder) return;
+    const { error } = await supabase.from('orders').update({ notes: noteText }).eq('id', editingNoteOrder.id);
+    if (!error) {
+      setOrders((prev) => prev.map((o) => (o.id === editingNoteOrder.id ? { ...o, notes: noteText } : o)));
+      setEditingNoteOrder(null);
+      setNoteText('');
+    } else {
+      alert('Gagal menyimpan catatan: ' + error.message);
+    }
+  };
+
+  // Input Pemasukan / Pengeluaran Manual Keuangan
+  const handleAddCashTransaction = async (e) => {
+    e.preventDefault();
+    if (!transForm.amount || Number(transForm.amount) <= 0) return alert('Nominal harus lebih dari 0!');
+
+    const { error } = await supabase.from('cash_transactions').insert([
+      {
+        type: transForm.type,
+        category: transForm.category,
+        amount: Number(transForm.amount),
+        description: transForm.description
+      }
+    ]);
+
+    if (!error) {
+      setTransForm({ type: 'pengeluaran', category: 'Operasional', amount: '', description: '' });
+      fetchCashTransactions();
+    } else {
+      alert('Gagal mencatat transaksi: ' + error.message + '\n\nPastikan tabel cash_transactions sudah dibuat di Supabase.');
+    }
+  };
+
+  const handleDeleteCashTransaction = async (id) => {
+    if (confirm('Hapus transaksi kas ini?')) {
+      await supabase.from('cash_transactions').delete().eq('id', id);
+      fetchCashTransactions();
+    }
   };
 
   // CRUD Produk
@@ -143,13 +166,13 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (confirm('Yakin ingin menghapus produk ini?')) {
+    if (confirm('Hapus produk ini?')) {
       await supabase.from('products').delete().eq('id', id);
       fetchProducts();
     }
   };
 
-  // Filter Pesanan
+  // Filter Orders
   const filteredOrders = orders.filter((o) => {
     const matchesSearch =
       o.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -167,41 +190,32 @@ export default function AdminDashboard() {
   });
 
   // ===================================================
-  // AKUNTANSI & KEUANGAN PROFESIONAL (PROFIT & LOSS)
+  // PERHITUNGAN AKUNTANSI KEUANGAN LENGKAP
   // ===================================================
   const completedOrders = filteredOrders.filter((o) => o.status === 'lunas');
   const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
 
-  // Gross Revenue (Omset Kotor Lunas)
-  const grossRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+  // Pemasukan dari Penjualan Lunas
+  const orderSalesRevenue = completedOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
   const pendingRevenue = pendingOrders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
 
-  // HPP / Cost of Goods Sold (COGS)
-  // Menghitung HPP dari cost_price produk atau estimasi default 60% jika belum diset
+  // HPP Penjualan (COGS)
   const totalCOGS = completedOrders.reduce((sum, item) => sum + Number(item.cost_price || item.total_price * 0.6), 0);
 
-  // Gross Profit (Laba Kotor)
-  const grossProfit = grossRevenue - totalCOGS;
+  // Pemasukan & Pengeluaran Kas Manual
+  const manualIncomes = cashTransactions.filter((t) => t.type === 'pemasukan').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const manualExpenses = cashTransactions.filter((t) => t.type === 'pengeluaran').reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-  // Total OPEX (Beban Operasional)
-  const totalOPEX = Object.values(opex).reduce((a, b) => a + b, 0);
+  // Total Pendapatan & Pengeluaran
+  const totalGrossRevenue = orderSalesRevenue + manualIncomes;
+  const grossProfit = totalGrossRevenue - totalCOGS;
+  const netProfit = grossProfit - manualExpenses;
 
-  // Net Operating Profit (Laba Bersih Operasional)
-  const netProfit = grossProfit - totalOPEX;
-  const netProfitMargin = grossRevenue > 0 ? ((netProfit / grossRevenue) * 100).toFixed(1) : 0;
-
-  // Analysis Breakdown Cara Bayar
-  const paymentMethodSummary = completedOrders.reduce((acc, order) => {
-    const method = order.payment_method || 'Transfer Bank';
-    acc[method] = (acc[method] || 0) + Number(order.total_price || 0);
-    return acc;
-  }, {});
-
-  // Export Laporan CSV
+  // Export CSV
   const handleExportCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data untuk diekspor!');
 
-    let csvContent = 'data:text/csv;charset=utf-8,ID Transaksi,Tanggal,Nama Pelanggan,No WA,Detail Items,Total Harga,Cara Bayar,Status\n';
+    let csvContent = 'data:text/csv;charset=utf-8,ID Transaksi,Tanggal,Nama Pelanggan,No WA,Detail Items,Total Harga,Cara Bayar,Status,Catatan\n';
     filteredOrders.forEach((o) => {
       const row = [
         o.id,
@@ -211,7 +225,8 @@ export default function AdminDashboard() {
         `"${o.items || ''}"`,
         o.total_price || 0,
         `"${o.payment_method || 'Transfer Bank'}"`,
-        o.status
+        o.status,
+        `"${o.notes || ''}"`
       ].join(',');
       csvContent += row + '\n';
     });
@@ -219,7 +234,7 @@ export default function AdminDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Laporan_Keuangan_${startDate || 'Awal'}_sd_${endDate || 'Akhir'}.csv`);
+    link.setAttribute('download', `Laporan_Keuangan_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -230,7 +245,7 @@ export default function AdminDashboard() {
       <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
         <form onSubmit={handleLogin} className="w-full max-w-sm rounded-3xl bg-slate-800 p-8 shadow-2xl border border-slate-700 space-y-5">
           <div className="text-center">
-            <h1 className="text-2xl font-black text-white">Admin Finance</h1>
+            <h1 className="text-2xl font-black text-white">Admin Finance Portal</h1>
             <p className="text-xs text-slate-400 mt-1">Masukan password untuk mengelola keuangan</p>
           </div>
           <input
@@ -251,11 +266,11 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8 font-sans">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header Professional */}
+        {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-6">
           <div>
-            <span className="text-[10px] font-bold tracking-widest text-emerald-400 uppercase">Sistem Akuntansi & Manajemen</span>
-            <h1 className="text-2xl sm:text-3xl font-black text-white">Dashboard Keuangan & Operasional</h1>
+            <span className="text-[10px] font-bold tracking-widest text-emerald-400 uppercase">Sistem Keuangan Professional</span>
+            <h1 className="text-2xl sm:text-3xl font-black text-white">Dashboard Admin & Kas Toko</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -264,7 +279,7 @@ export default function AdminDashboard() {
                 activeTab === 'finance' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
               }`}
             >
-              📊 Keuangan & Laba Rugi
+              💰 Arus Kas & Laba Rugi
             </button>
             <button
               onClick={() => setActiveTab('orders')}
@@ -272,7 +287,7 @@ export default function AdminDashboard() {
                 activeTab === 'orders' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
               }`}
             >
-              📦 Transaksi & Cara Bayar
+              📦 Pesanan & Cara Bayar
             </button>
             <button
               onClick={() => setActiveTab('products')}
@@ -280,7 +295,7 @@ export default function AdminDashboard() {
                 activeTab === 'products' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
               }`}
             >
-              🎁 Modal & Stok Produk
+              🎁 Stok & Modal Produk
             </button>
             <button onClick={() => setIsAuthenticated(false)} className="rounded-xl border border-rose-900/50 bg-rose-950/30 px-3 py-2.5 text-xs font-bold text-rose-400 hover:bg-rose-900/50">
               🚪 Keluar
@@ -288,196 +303,166 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TAB 1: KEUANGAN PROFESIONAL (PROFIT & LOSS STATEMENT) */}
+        {/* TAB 1: KEUANGAN, INPUT PEMASUKAN & PENGELUARAN */}
         {activeTab === 'finance' && (
           <div className="space-y-6">
-            {/* Control Bar Periode Tanggal */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl bg-slate-900 border border-slate-800 p-4">
-              <div>
-                <h2 className="text-sm font-bold text-white">Laporan Laba Rugi Usaha (Profit & Loss)</h2>
-                <p className="text-xs text-slate-400">Ringkasan akuntansi real-time pendapatan kotor, HPP, operasional, dan laba bersih.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white"
-                />
-                <span className="text-xs font-bold text-slate-500">s/d</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-1.5 text-xs text-white"
-                />
-                <button
-                  onClick={handleExportCSV}
-                  className="rounded-xl bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
-                >
-                  📥 Export Laporan CSV
-                </button>
-              </div>
-            </div>
-
-            {/* Top Stat Cards */}
+            {/* Summary Cards */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Revenue (Omset Lunas)</span>
-                <p className="text-2xl font-black text-emerald-400">Rp {grossRevenue.toLocaleString('id-ID')}</p>
-                <span className="block text-[10px] text-slate-500">{completedOrders.length} transaksi selesai</span>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Total Pendapatan (Penjualan + Lain)</span>
+                <p className="text-2xl font-black text-emerald-400">Rp {totalGrossRevenue.toLocaleString('id-ID')}</p>
+                <div className="text-[10px] text-slate-500">
+                  Penjualan: Rp {orderSalesRevenue.toLocaleString('id-ID')} | Kas Lain: Rp {manualIncomes.toLocaleString('id-ID')}
+                </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">HPP / Modal Bahan Baku</span>
-                <p className="text-2xl font-black text-rose-400">Rp {totalCOGS.toLocaleString('id-ID')}</p>
-                <span className="block text-[10px] text-slate-500">Modal pokok barang terjual</span>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-400">HPP / Modal Pokok Produk</span>
+                <p className="text-2xl font-black text-amber-400">Rp {totalCOGS.toLocaleString('id-ID')}</p>
+                <span className="text-[10px] text-slate-500">Estimasi modal barang terjual</span>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Beban Operasional</span>
-                <p className="text-2xl font-black text-amber-400">Rp {totalOPEX.toLocaleString('id-ID')}</p>
-                <span className="block text-[10px] text-slate-500">Packing, pengiriman, overhead</span>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-rose-400">Total Pengeluaran Kas (Beban)</span>
+                <p className="text-2xl font-black text-rose-400">Rp {manualExpenses.toLocaleString('id-ID')}</p>
+                <span className="text-[10px] text-slate-500">Gaji, Listrik, Operasional, Packing</span>
               </div>
 
-              <div className="rounded-2xl border border-emerald-900/50 bg-emerald-950/20 p-5 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Net Profit (Laba Bersih)</span>
+              <div className="rounded-2xl border border-emerald-800/80 bg-emerald-950/30 p-5 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-emerald-300">Laba Bersih (Net Profit)</span>
                 <p className="text-2xl font-black text-emerald-300">Rp {netProfit.toLocaleString('id-ID')}</p>
-                <span className="block text-[10px] text-emerald-500/80 font-bold">Margin Keuntungan: {netProfitMargin}%</span>
+                <span className="text-[10px] text-emerald-500/80 font-bold">Laba Kotor - Total Pengeluaran</span>
               </div>
             </div>
 
-            {/* Detail Laporan Akuntansi Laba Rugi & Penginputan Operasional */}
+            {/* Input Form Pemasukan & Pengeluaran */}
             <div className="grid gap-6 lg:grid-cols-3">
-              {/* Table Income Statement (Laba Rugi Formal) */}
-              <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-                <h3 className="font-bold text-white text-sm border-b border-slate-800 pb-3 flex justify-between items-center">
-                  <span>📑 Financial Statement (Rincian Akuntansi)</span>
-                  <span className="text-xs text-slate-500 font-normal">Mata Uang: IDR (Rupiah)</span>
-                </h3>
-
-                <div className="space-y-3 text-xs">
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-slate-300 font-medium">Pendapatan Kotor / Revenue (Lunas)</span>
-                    <span className="font-bold text-emerald-400">Rp {grossRevenue.toLocaleString('id-ID')}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-1 text-rose-400">
-                    <span>(-) Harga Pokok Penjualan (HPP / COGS)</span>
-                    <span className="font-bold">- Rp {totalCOGS.toLocaleString('id-ID')}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-2 border-t border-slate-800 font-bold text-slate-200">
-                    <span>(=) Gross Profit (Laba Kotor)</span>
-                    <span>Rp {grossProfit.toLocaleString('id-ID')}</span>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-800">
-                    <span className="text-amber-400 font-bold block">(-) Breakdown Beban Operasional (OPEX):</span>
-                    
-                    <div className="grid grid-cols-2 gap-2 pl-2">
-                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
-                        <span className="text-slate-400">Packaging & Kotak:</span>
-                        <input
-                          type="number"
-                          value={opex.packaging}
-                          onChange={(e) => handleOpexChange('packaging', e.target.value)}
-                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
-                        <span className="text-slate-400">Marketing & Iklan:</span>
-                        <input
-                          type="number"
-                          value={opex.marketing}
-                          onChange={(e) => handleOpexChange('marketing', e.target.value)}
-                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
-                        <span className="text-slate-400">Listrik & Operasional:</span>
-                        <input
-                          type="number"
-                          value={opex.operational}
-                          onChange={(e) => handleOpexChange('operational', e.target.value)}
-                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800">
-                        <span className="text-slate-400">Biaya Kurir & Kirim:</span>
-                        <input
-                          type="number"
-                          value={opex.shipping}
-                          onChange={(e) => handleOpexChange('shipping', e.target.value)}
-                          className="w-24 bg-transparent text-right font-bold text-amber-400 focus:outline-none"
-                        />
-                      </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>✏️</span> Catat Pemasukan / Pengeluaran
+                </h2>
+                <form onSubmit={handleAddCashTransaction} className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Jenis Transaksi</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTransForm({ ...transForm, type: 'pengeluaran', category: 'Operasional' })}
+                        className={`py-2 rounded-xl text-xs font-bold border ${
+                          transForm.type === 'pengeluaran' ? 'bg-rose-900/50 border-rose-500 text-rose-300' : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        🔴 Pengeluaran
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTransForm({ ...transForm, type: 'pemasukan', category: 'Pemasukan Lain' })}
+                        className={`py-2 rounded-xl text-xs font-bold border ${
+                          transForm.type === 'pemasukan' ? 'bg-emerald-900/50 border-emerald-500 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        🟢 Pemasukan
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center py-3 border-t-2 border-slate-700 font-black text-sm bg-emerald-950/40 p-4 rounded-xl border border-emerald-900/50 mt-4">
-                    <span className="text-emerald-400">(=) LABA BERSIH OPERASIONAL (NET PROFIT)</span>
-                    <span className="text-emerald-300 text-base">Rp {netProfit.toLocaleString('id-ID')}</span>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Kategori</label>
+                    <select
+                      value={transForm.category}
+                      onChange={(e) => setTransForm({ ...transForm, category: e.target.value })}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                    >
+                      {transForm.type === 'pengeluaran' ? (
+                        <>
+                          <option value="Operasional">Operasional & Listrik</option>
+                          <option value="Packing">Bahan Packing & Kotak</option>
+                          <option value="Gaji">Gaji Karyawan</option>
+                          <option value="Marketing">Iklan & Promo</option>
+                          <option value="Bahan Baku">Pembelian Stok Bahan</option>
+                          <option value="Lain-lain">Lain-lain</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="Pemasukan Lain">Pemasukan Kas Lain</option>
+                          <option value="Modal Tambahan">Modal Pemilik</option>
+                          <option value="Penjualan Offline">Penjualan Toko Offline</option>
+                        </>
+                      )}
+                    </select>
                   </div>
-                </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nominal (Rp)</label>
+                    <input
+                      type="number"
+                      placeholder="Contoh: 150000"
+                      value={transForm.amount}
+                      onChange={(e) => setTransForm({ ...transForm, amount: e.target.value })}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Keterangan / Detail</label>
+                    <input
+                      type="text"
+                      placeholder="Misal: Beli pita & bubble wrap..."
+                      value={transForm.description}
+                      onChange={(e) => setTransForm({ ...transForm, description: e.target.value })}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
+                    />
+                  </div>
+
+                  <button type="submit" className="w-full rounded-xl bg-emerald-600 py-3 text-xs font-bold text-white hover:bg-emerald-500 transition-all">
+                    + Simpan Transaksi Kas
+                  </button>
+                </form>
               </div>
 
-              {/* Sidebar Analisis Cara Bayar & Piutang */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-6">
-                <h3 className="font-bold text-white text-sm border-b border-slate-800 pb-3">💳 Stream Kas Masuk per Cara Bayar</h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold mb-1 text-slate-300">
-                      <span>🏦 Transfer Bank</span>
-                      <span className="text-emerald-400">Rp {(paymentMethodSummary['Transfer Bank'] || 0).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded-full"
-                        style={{ width: `${grossRevenue > 0 ? ((paymentMethodSummary['Transfer Bank'] || 0) / grossRevenue) * 100 : 0}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold mb-1 text-slate-300">
-                      <span>📱 QRIS</span>
-                      <span className="text-emerald-400">Rp {(paymentMethodSummary['QRIS'] || 0).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden">
-                      <div
-                        className="h-full bg-purple-500 rounded-full"
-                        style={{ width: `${grossRevenue > 0 ? ((paymentMethodSummary['QRIS'] || 0) / grossRevenue) * 100 : 0}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold mb-1 text-slate-300">
-                      <span>💵 Tunai / Cash</span>
-                      <span className="text-emerald-400">Rp {(paymentMethodSummary['Tunai / Cash'] || 0).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${grossRevenue > 0 ? ((paymentMethodSummary['Tunai / Cash'] || 0) / grossRevenue) * 100 : 0}%` }}
-                      ></div>
-                    </div>
-                  </div>
+              {/* Tabel Buku Kas Transaksi Manual */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                  <h2 className="text-sm font-bold text-white">📖 Buku Kas / Jurnal Pengeluaran & Pemasukan</h2>
+                  <button onClick={handleExportCSV} className="text-xs text-emerald-400 font-bold hover:underline">
+                    📥 Download CSV
+                  </button>
                 </div>
 
-                <div className="border-t border-slate-800 pt-4 space-y-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Piutang Pelanggan (Pending)</span>
-                  <p className="text-xl font-black text-amber-400">Rp {pendingRevenue.toLocaleString('id-ID')}</p>
-                  <p className="text-[10px] text-slate-500">{pendingOrders.length} transaksi menanti konfirmasi pembayaran.</p>
+                <div className="max-h-96 overflow-y-auto space-y-2">
+                  {cashTransactions.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-slate-500 italic">Belum ada catatan pengeluaran / pemasukan kas tambahan.</div>
+                  ) : (
+                    cashTransactions.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800/80 text-xs">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${item.type === 'pemasukan' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}`}>
+                              {item.category}
+                            </span>
+                            <span className="text-[10px] text-slate-500">{item.created_at ? item.created_at.split('T')[0] : ''}</span>
+                          </div>
+                          <p className="text-slate-300">{item.description || 'Tanpa keterangan'}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`font-mono font-bold text-sm ${item.type === 'pemasukan' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {item.type === 'pemasukan' ? '+' : '-'} Rp {Number(item.amount).toLocaleString('id-ID')}
+                          </span>
+                          <button onClick={() => handleDeleteCashTransaction(item.id)} className="text-slate-600 hover:text-rose-400 font-bold">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: MANAJEMEN PESANAN & CARA BAYAR (INTERAKTIF FIX) */}
+        {/* TAB 2: MANAJEMEN PESANAN, CARA BAYAR & CATATAN */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             {/* Filter Bar */}
@@ -535,8 +520,8 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Tabel Pesanan Lengkap dengan FIX CARA BAYAR */}
-            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
+            {/* Tabel Orders */}
+            <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
                   <tr>
@@ -544,15 +529,16 @@ export default function AdminDashboard() {
                     <th className="p-4">Pelanggan</th>
                     <th className="p-4">Detail Items</th>
                     <th className="p-4">Total</th>
-                    <th className="p-4">Cara Bayar (Interaktif)</th>
+                    <th className="p-4">Cara Bayar</th>
                     <th className="p-4">Status</th>
+                    <th className="p-4">Catatan (Notes)</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500 italic">
+                      <td colSpan={8} className="p-8 text-center text-slate-500 italic">
                         Tidak ada transaksi pesanan ditemukan.
                       </td>
                     </tr>
@@ -574,7 +560,7 @@ export default function AdminDashboard() {
                           Rp {Number(item.total_price).toLocaleString('id-ID')}
                         </td>
 
-                        {/* CARA BAYAR INTERAKTIF (LANSUNG UPDATE KE SUPABASE) */}
+                        {/* Dropdown Cara Bayar */}
                         <td className="p-4">
                           <select
                             value={item.payment_method || 'Transfer Bank'}
@@ -587,6 +573,7 @@ export default function AdminDashboard() {
                           </select>
                         </td>
 
+                        {/* Dropdown Status */}
                         <td className="p-4">
                           <select
                             value={item.status}
@@ -599,17 +586,35 @@ export default function AdminDashboard() {
                             <option value="lunas">LUNAS</option>
                           </select>
                         </td>
+
+                        {/* Catatan (Notes) */}
+                        <td className="p-4 max-w-xs">
+                          {item.notes ? (
+                            <div className="text-slate-300 bg-slate-950 p-2 rounded-xl border border-slate-800 text-[11px] truncate">
+                              💬 {item.notes}
+                            </div>
+                          ) : (
+                            <span className="text-slate-600 italic">Belum ada catatan</span>
+                          )}
+                        </td>
+
                         <td className="p-4 text-center">
                           <div className="flex justify-center gap-2">
                             <button
+                              onClick={() => handleOpenNoteModal(item)}
+                              className="rounded-xl bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-amber-400 hover:bg-slate-700"
+                            >
+                              📝 Notes
+                            </button>
+                            <button
                               onClick={() => sendWhatsApp(item)}
-                              className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs text-white font-bold hover:bg-emerald-500"
+                              className="rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs text-white font-bold hover:bg-emerald-500"
                             >
                               📱 WA
                             </button>
                             <button
                               onClick={() => setInvoiceOrder(item)}
-                              className="rounded-xl bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700"
+                              className="rounded-xl bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700"
                             >
                               🧾 Invoice
                             </button>
@@ -624,10 +629,9 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 3: MANAJEMEN STOK & HPP PRODUK */}
+        {/* TAB 3: MANAJEMEN STOK & PRODUK */}
         {activeTab === 'products' && (
           <div className="grid gap-6 lg:grid-cols-3">
-            {/* Form Tambah/Edit Produk */}
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
               <h2 className="text-base font-bold text-white">
                 {editingProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
@@ -635,7 +639,7 @@ export default function AdminDashboard() {
               <form onSubmit={handleSaveProduct} className="space-y-3">
                 <input
                   type="text"
-                  placeholder="Nama Parcel..."
+                  placeholder="Nama Produk..."
                   value={productForm.name}
                   onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
                   className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
@@ -665,7 +669,7 @@ export default function AdminDashboard() {
                   required
                 />
                 <textarea
-                  placeholder="Deskripsi Isi Parcel..."
+                  placeholder="Deskripsi Produk..."
                   value={productForm.description}
                   onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                   className="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-white"
@@ -698,7 +702,6 @@ export default function AdminDashboard() {
               </form>
             </div>
 
-            {/* Daftar Produk */}
             <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
@@ -744,13 +747,48 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Modal Printable Invoice */}
+        {/* MODAL: INPUT CATATAN ORDER */}
+        {editingNoteOrder && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black/80 p-4 z-50">
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-4 text-slate-100 shadow-2xl">
+              <h3 className="text-base font-bold text-white border-b border-slate-800 pb-2">
+                📝 Catatan Pesanan #{editingNoteOrder.id}
+              </h3>
+              <p className="text-xs text-slate-400">
+                Tambahkan info tambahan seperti alamat pengiriman, instruksi kartu ucapan, atau catatan pembeli.
+              </p>
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Tulis catatan disini..."
+                className="w-full rounded-2xl bg-slate-950 border border-slate-800 p-3 text-xs text-white focus:outline-none focus:border-emerald-500"
+                rows={4}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setEditingNoteOrder(null)}
+                  className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-300"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSaveNote}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500"
+                >
+                  Simpan Catatan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: PRINTABLE INVOICE */}
         {invoiceOrder && (
           <div className="fixed inset-0 flex items-center justify-center bg-black/80 p-4 z-50">
             <div className="w-full max-w-lg rounded-3xl bg-white text-slate-900 p-8 space-y-4 shadow-2xl">
               <div className="text-center border-b pb-4">
                 <h2 className="text-2xl font-black text-emerald-900">INVOICE OFFICIAL</h2>
-                <p className="text-xs text-slate-500">PARCEL STORE - TRANSACTION #{invoiceOrder.id}</p>
+                <p className="text-xs text-slate-500">TRANSACTION #{invoiceOrder.id}</p>
               </div>
               <div className="space-y-2 text-xs">
                 <p><strong>Nama Pelanggan:</strong> {invoiceOrder.customer_name}</p>
@@ -759,13 +797,14 @@ export default function AdminDashboard() {
                 <p><strong>Total Tagihan:</strong> Rp {Number(invoiceOrder.total_price).toLocaleString('id-ID')}</p>
                 <p><strong>Metode Pembayaran:</strong> {invoiceOrder.payment_method || 'Transfer Bank'}</p>
                 <p><strong>Status Pembayaran:</strong> <span className="uppercase font-bold text-emerald-700">{invoiceOrder.status}</span></p>
+                {invoiceOrder.notes && <p><strong>Catatan Tambahan:</strong> {invoiceOrder.notes}</p>}
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <button onClick={() => setInvoiceOrder(null)} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700">
                   Tutup
                 </button>
                 <button onClick={() => window.print()} className="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800">
-                  🖨️ Cetak / PDF Invoice
+                  🖨️ Cetak / PDF
                 </button>
               </div>
             </div>
